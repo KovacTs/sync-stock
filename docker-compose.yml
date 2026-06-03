@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: sync-stock-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password_123
+      POSTGRES_DB: sync_stock
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  soabus:
+    image: jrgiadach/soabus:v1
+    container_name: sync-stock-esb
+    restart: always
+    ports:
+      - "5000:5000"
+
+volumes:
+  pgdata:

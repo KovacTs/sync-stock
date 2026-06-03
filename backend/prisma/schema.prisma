@@ -1,0 +1,130 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Rol {
+  Vendedor
+  Admin
+  ECommerce
+}
+
+enum TipoUbicacion {
+  Tienda
+  Bodega
+}
+
+enum EstadoReserva {
+  Pendiente
+  Confirmada
+  Expirada
+}
+
+enum CanalVenta {
+  POS_Fisico
+  E_Commerce
+}
+
+enum EstadoOrden {
+  Creada
+  Pagada
+  Despachada
+  Cancelada
+}
+
+enum TipoMovimiento {
+  Venta
+  Reserva_Creada
+  Reserva_Expirada
+  Recepcion
+  Ajuste
+}
+
+model Usuario {
+  id        String         @id @default(uuid()) @db.Uuid
+  username  String         @unique @db.VarChar(50)
+  password  String         @db.VarChar(100)
+  rol       Rol
+  historial HistorialInv[]
+}
+
+model Producto {
+  id           String         @id @default(uuid()) @db.Uuid
+  sku          String         @unique @db.VarChar(50)
+  nombre       String         @db.VarChar(150)
+  precio       Decimal        @db.Decimal(12, 2)
+  inventarios  Inventario[]
+  reservas     Reserva[]
+  lineasOrden  LineaOrden[]
+  historialInv HistorialInv[]
+}
+
+model Ubicacion {
+  id           String         @id @default(uuid()) @db.Uuid
+  nombre       String         @db.VarChar(100)
+  tipo         TipoUbicacion
+  inventarios  Inventario[]
+  reservas     Reserva[]
+  historialInv HistorialInv[]
+}
+
+model Inventario {
+  id              String    @id @default(uuid()) @db.Uuid
+  productoId      String    @map("producto_id") @db.Uuid
+  ubicacionId     String    @map("ubicacion_id") @db.Uuid
+  stockDisponible Int       @default(0)
+  stockReservado  Int       @default(0)
+  stockTransito   Int       @default(0)
+  producto        Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  ubicacion       Ubicacion @relation(fields: [ubicacionId], references: [id], onDelete: Cascade)
+
+  @@unique([productoId, ubicacionId])
+}
+
+model Reserva {
+  id              String        @id @default(uuid()) @db.Uuid
+  productoId      String        @map("producto_id") @db.Uuid
+  ubicacionId     String        @map("ubicacion_id") @db.Uuid
+  cantidad        Int
+  estado          EstadoReserva @default(Pendiente)
+  fechaCreacion   DateTime      @default(now()) @map("fecha_creacion")
+  fechaExpiracion DateTime      @map("fecha_expiracion")
+  producto        Producto      @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  ubicacion       Ubicacion     @relation(fields: [ubicacionId], references: [id], onDelete: Cascade)
+}
+
+model Orden {
+  id            String       @id @default(uuid()) @db.Uuid
+  canal         CanalVenta
+  estado        EstadoOrden  @default(Creada)
+  fechaCreacion DateTime     @default(now()) @map("fecha_creacion")
+  total         Decimal      @db.Decimal(12, 2)
+  lineas        LineaOrden[]
+}
+
+model LineaOrden {
+  id             String   @id @default(uuid()) @db.Uuid
+  ordenId        String   @map("orden_id") @db.Uuid
+  productoId     String   @map("producto_id") @db.Uuid
+  cantidad       Int
+  precioUnitario Decimal  @db.Decimal(12, 2) @map("precio_unitario")
+  orden          Orden    @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  producto       Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+}
+
+model HistorialInv {
+  id             String         @id @default(uuid()) @db.Uuid
+  productoId     String         @map("producto_id") @db.Uuid
+  ubicacionId    String         @map("ubicacion_id") @db.Uuid
+  cantidad       Int
+  tipoMovimiento TipoMovimiento @map("tipo_movimiento")
+  fechaHora      DateTime       @default(now()) @map("fecha_hora")
+  usuarioId      String         @map("usuario_id") @db.Uuid
+  producto       Producto       @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  ubicacion      Ubicacion      @relation(fields: [ubicacionId], references: [id], onDelete: Cascade)
+  usuario        Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+}

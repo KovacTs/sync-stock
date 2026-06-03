@@ -6,3 +6,14 @@
 *.synctex.gz
 *.fls
 *.fdb_latexmk
+
+# Environment secrets
+.env
+backend/.env
+frontend/.env
+
+# Dependencies & Build Outputs
+node_modules/
+dist/
+build/
+out/
