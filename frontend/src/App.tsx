@@ -77,11 +77,10 @@ export default function App() {
   const [isUsingMocks, setIsUsingMocks] = useState(false);
 
   useEffect(() => {
-    if (token) {
-      fetchData();
-      const interval = setInterval(fetchData, 8000); // refresh lists every 8 seconds
-      return () => clearInterval(interval);
-    }
+    if (!token) return;
+    fetchData();
+    const interval = setInterval(fetchData, 8000); // refresh lists every 8 seconds
+    return () => clearInterval(interval);
   }, [token]);
 
   const showNotification = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
