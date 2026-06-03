@@ -1,0 +1,457 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+
+% Configuración de encabezado y pie de página
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Sistema Sync-Stock: Informe 2da Entrega}
+\rhead{Marzo 2026}
+\rfoot{\thepage}
+
+\begin{document}
+
+% --- PORTADA ---
+\begin{titlepage}
+    \centering
+    {\bfseries\Large Universidad Diego Portales \par}
+    {\large Facultad de Ingeniería y Ciencias \par}
+    {\large Curso Arquitectura de Software \par}
+    \vspace{3cm}
+    {\bfseries\huge Sistema de Gestión de Inventario Omnicanal \par}
+    {\huge (Sync-Stock) \par}
+    \vspace{1.5cm}
+    {\Large Informe de 2da Entrega \par}
+    \vspace{2cm}
+    \begin{flushleft}
+        {\bfseries Organización:} Tienda de Pesca "PescaTotal" \\
+        {\bfseries Área:} Departamento de Ventas e Inventario \\
+        {\bfseries Responsables:} Fernando Llancao, Carlos Jara, Bastian Peña, Nicolas Canelo \\
+        {\bfseries Fecha:} 28 de Marzo de 2026 \\
+        {\bfseries Ubicación:} Región Metropolitana, Chile
+    \end{flushleft}
+    \vfill
+    {\large Semestre 1/2026}
+\end{titlepage}
+
+\newpage
+\tableofcontents
+\newpage
+
+% --- 1. EQUIPO DE TRABAJO ---
+\section{Equipo de Trabajo}
+Para el desarrollo del sistema Sync-Stock, se ha conformado un equipo de trabajo liderado por el responsable del área de desarrollo:
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{|l|l|X|}
+\hline
+\textbf{Integrante} & \textbf{Cargo} & \textbf{Responsabilidades} \\ \hline
+Fernando Llancao & CEO / Líder de Proyecto & 
+\begin{itemize}[nosep, leftmargin=*]
+    \item Liderazgo estratégico y toma de decisiones ejecutivas.
+    \item Coordinación directa con los dueños de PescaTotal.
+    \item Supervisión general del análisis y diseño del sistema.
+\end{itemize} \\ \hline
+Nicolas Canelo & Arquitecto de Software & 
+\begin{itemize}[nosep, leftmargin=*]
+    \item Diseño de la estructura técnica y componentes.
+    \item Selección del stack tecnológico adecuado para tiempo real.
+\end{itemize} \\ \hline
+Carlos Jara & Analista de Sistemas & 
+\begin{itemize}[nosep, leftmargin=*]
+    \item Levantamiento y especificación de requerimientos.
+    \item Definición del modelo de datos y persistencia.
+\end{itemize} \\ \hline
+Bastian Peña & Desarrollador Full-stack & 
+\begin{itemize}[nosep, leftmargin=*]
+    \item Implementación de la lógica de negocio y API.
+    \item Desarrollo de la interfaz de usuario amigable.
+\end{itemize} \\ \hline
+\end{tabularx}
+\end{table}
+
+% --- 2. DESCRIPCIÓN DEL SISTEMA Y CONTEXTO ---
+\section{Descripción del Sistema y Contexto Organizacional}
+
+\subsection{La Organización: PescaTotal}
+PescaTotal es una tienda retail especializada en artículos de pesca recreativa y equipamiento outdoor. A pesar de ser una organización de escala pequeña, posee un flujo de ventas constante y una base de clientes fidelizada en la Región Metropolitana.
+
+\subsection{Área de Trabajo: Departamento de Ventas e Inventario}
+Esta unidad operativa gestiona el stock físico de la tienda y, recientemente, la administración del nuevo canal e-commerce. Sus funciones incluyen la recepción de suministros, atención al público y preparación de pedidos online.
+
+\subsection{Problemática Actual}
+La tienda enfrenta dificultades operacionales críticas derivadas de la falta de integración digital:
+\begin{itemize}
+    \item \textbf{Incumplimiento de pedidos y fricción con clientes por falta de gestión de reservas:} Al carecer de un mecanismo que bloquee o separe físicamente los productos apenas se venden por el canal e-commerce, los artículos quedan expuestos en las vitrinas y son comprados por clientes presenciales. Esto genera un problema grave para el negocio: la necesidad de cancelar compras online ya pagadas, procesar devoluciones de dinero, sobrecargar al personal de atención al cliente y generar un impacto negativo en la reputación y fidelidad de los compradores de PescaTotal.
+\end{itemize}
+
+\subsection{Sistema Propuesto: Sync-Stock}
+Sync-Stock es una plataforma segura de gestión de inventario omnicanal. Su objetivo principal es actuar como un núcleo de datos centralizado que sincronice el stock en tiempo real entre la tienda física y el e-commerce.
+
+Para garantizar la integridad de las operaciones, el sistema contará con acceso restringido mediante roles, entregando a cada empleado (Vendedor, Encargado E-commerce o Administrador) solo las herramientas que necesita. Al registrar una venta en el mesón o recibir un pedido web, el sistema no solo actualiza la disponibilidad global inmediatamente, sino que genera un estado de "Reserva" inmutable para las compras web, bloqueando la posibilidad de sobreventas en la tienda física. Esto asegurará la coherencia total de los datos y protegerá la experiencia de compra de los clientes.
+
+% --- 3. OBJETIVOS Y PERFILES ---
+\section{Objetivos y Perfiles de Usuario}
+
+\subsection{Objetivos del Sistema}
+\subsubsection{Objetivo General}
+Implementar un sistema integral que garantice la coherencia total del inventario entre la tienda física y el e-commerce de PescaTotal, optimizando la eficiencia operativa y eliminando errores de sobreventa.
+
+\subsubsection{Objetivos Específicos}
+\begin{enumerate}
+    \item Sincronizar de forma automática y bidireccional el stock tras cada transacción.
+    \item Implementar un módulo de reserva inmediata para asegurar productos vendidos vía web.
+    \item Proporcionar visibilidad de stock real al personal de ventas mediante una interfaz simple.
+    \item "Reducir en un 85\% las horas-hombre semanales dedicadas a la conciliación y revisión manual de inventarios, alcanzando esta métrica al finalizar el segundo mes de operación en producción del sistema Sync-Stock."
+\end{enumerate}
+
+\subsection{Perfiles de Usuario}
+\begin{itemize}
+    \item \textbf{Usuario Primario (Vendedor):} Utiliza el sistema en el mesón de la tienda para consultar disponibilidad y cerrar ventas presenciales.
+    \begin{itemize}
+        \item Frecuencia de uso: Permanente durante la jornada.
+        \item Nivel tecnico: Intermedio.
+    \end{itemize}
+    \item \textbf{Usuario Secundario (Encargado E-commerce):} Gestiona los pedidos web, visualiza las reservas y confirma la salida física del producto.
+    \begin{itemize}
+        \item Frecuencia de uso: Permanente durante la jornada.
+        \item Nivel tecnico: Intermedio.
+    \end{itemize}
+    \item \textbf{Usuario de Apoyo (Administrador):} Gestiona el catálogo, permisos de usuarios y configuraciones de alertas de stock.
+    \begin{itemize}
+        \item Frecuencia de uso: Variable, segun necesidades de la tienda.
+        \item Nivel tecnico: Avanzado.
+    \end{itemize}
+\end{itemize}
+
+% --- 4. REQUERIMIENTOS FUNCIONALES ---
+\section{Requerimientos Funcionales}
+
+\begin{table}
+\centering
+\begin{tabularx}{\textwidth}{|l|l|X|}
+\hline
+\textbf{Código} & \textbf{Nombre} & \textbf{Descripción} \\ \hline
+RF-001 & Sincronización Real-Time & El sistema debe descontar el stock del catálogo online inmediatamente tras una venta física confirmada. \\ \hline
+RF-002 & Reserva de Stock Online & Al detectarse una orden de compra web, el sistema debe mover el producto al estado "Reservado", restándolo del stock físico vendible. \\ \hline
+RF-003 & Gestión de Productos & Permitir el registro, edición y categorización de artículos con códigos de barra y ubicación física. \\ \hline
+RF-004 & Control de Despachos & Funcionalidad para confirmar la salida de productos reservados, actualizando el estado a "Vendido" definitivamente. \\ \hline
+RF-005 & Alertas de Quiebre & Notificaciones automáticas cuando el stock disponible llegue a un umbral mínimo configurado. \\ \hline
+RF-006 & Log de Auditoría & Registro detallado de quién, cuándo y por qué canal se realizó cada movimiento de inventario. \\ \hline
+RF-007 & Autenticación de Usuarios (Login) & El sistema debe requerir que todo usuario inicie sesión mediante credenciales (correo/usuario y contraseña) antes de acceder a cualquier funcionalidad. \\ \hline
+RF-008 & Control de Acceso Basado en Roles (RBAC) & El sistema debe restringir las funcionalidades e interfaces de acuerdo con el rol del usuario (Administrador, Vendedor, Encargado E-commerce). Por ejemplo, solo el Administrador podrá gestionar permisos o el catálogo. \\ \hline
+RF-009 & Cierre de Sesión y Tiempos de Inactividad & El sistema debe permitir el cierre de sesión manual y forzar un cierre automático tras 30 minutos de inactividad por motivos de seguridad en los equipos compartidos de la tienda. \\ \hline
+\end{tabularx}
+\end{table}
+
+\newpage
+
+\section{Modelo de Datos y Mecanismo de Persistencia}
+Para dar soporte a las funcionalidades del sistema Sync-Stock en un entorno retail omnicanal real, se ha diseñado una estrategia de persistencia transaccional de alta consistencia y un modelo de datos relacional detallado.
+
+\subsection{Mecanismo de Persistencia y Decisiones de Diseño}
+Se ha optado por implementar una \textbf{Base de Datos Relacional (RDBMS)} utilizando \textbf{PostgreSQL}. Esta decisión responde a la necesidad de resolver problemas complejos de concurrencia y consistencia que un sistema omnicanal enfrenta en tiempo real:
+
+\begin{enumerate}
+    \item \textbf{Consistencia Transaccional Estricta (ACID):} Para evitar la sobreventa, los cambios en el inventario deben procesarse con aislamiento transaccional estricto. PostgreSQL permite aislar operaciones mediante el nivel de aislamiento de transacciones \textit{Read Committed} combinado con bloqueos pesimistas explícitos.
+    
+    \item \textbf{Estrategia de Concurrencia y Bloqueos Pesimistas (Pessimistic Locking):} Al procesar una compra en el Punto de Venta (POS) o iniciar un proceso de reserva web, el sistema ejecuta una transacción que bloquea las filas correspondientes de la tabla de inventario mediante la sentencia \texttt{SELECT ... FOR UPDATE}.
+    \begin{itemize}
+        \item Esto garantiza que ningún otro proceso pueda modificar la cantidad del producto hasta que la transacción actual finalice (haga \textit{COMMIT} o \textit{ROLLBACK}).
+        \item \textbf{Prevención de Deadlocks:} Para evitar bloqueos mutuos (\textit{deadlocks}) bajo cargas de alta concurrencia, el sistema ordena siempre los ítems de la consulta de forma determinista (ordenados por el identificador del producto) antes de solicitar el bloqueo.
+    \end{itemize}
+    
+    \item \textbf{Política de Expiración de Reservas y Liberación de Stock (Time-To-Live):} El canal e-commerce genera reservas temporales para proteger el stock de un cliente mientras completa el pago. Sin embargo, para evitar que el stock quede bloqueado indefinidamente si el cliente abandona el carrito, se implementa una regla de expiración de 15 minutos.
+    \begin{itemize}
+        \item Cada reserva se registra en la tabla \texttt{Reserva} con un campo \texttt{FechaExpiracion}.
+        \item Un proceso daemon (o \textit{cron job}) en el bus de servicios ejecuta periódicamente (cada 1 minuto) una transacción que selecciona las reservas expiradas en estado \texttt{Pendiente}, revierte el stock reservado al stock disponible (\texttt{StockDisponible = StockDisponible + Cantidad}) y marca la reserva como \texttt{Expirada}.
+    \end{itemize}
+    
+    \item \textbf{Pooling de Conexiones y Alta Disponibilidad:} Para asegurar tiempos de respuesta menores a 200 ms y soportar picos de carga concurrentes entre la tienda y el sitio web, se utiliza un pooler de conexiones (\textbf{PgBouncer}) configurado en modo transacción. Esto permite optimizar el uso de recursos y mantener la latencia en rangos óptimos.
+\end{enumerate}
+
+\subsection{Diccionario de Datos (Entidades del Sistema Omnicanal)}
+A continuación se detalla el esquema de base de datos extendido que soporta la lógica del inventario multicanal, reservas y auditoría de transacciones:
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\toprule
+\textbf{Entidad} & \textbf{Atributo} & \textbf{Tipo de Dato} & \textbf{Descripción} \\ \midrule
+\textbf{Producto} & ID\_Producto (PK) & UUID & Identificador universal único del artículo. \\
+ & SKU & VARCHAR(50) & Código SKU único (Stock Keeping Unit). \\
+ & Nombre & VARCHAR(150) & Nombre o descripción del artículo. \\
+ & Precio & DECIMAL(12,2) & Precio de venta unitario. \\ \addlinespace
+\textbf{Ubicacion} & ID\_Ubicacion (PK) & UUID & Identificador único de la ubicación de stock. \\
+ & Nombre & VARCHAR(100) & Nombre (ej. 'Bodega Central', 'POS Tienda'). \\
+ & Tipo & ENUM & Tipo de instalación: 'Tienda' o 'Bodega'. \\ \addlinespace
+\textbf{Inventario} & ID\_Inventario (PK) & UUID & Identificador del registro de inventario. \\
+ & Producto\_ID (FK) & UUID & Referencia a la entidad \textbf{Producto}. \\
+ & Ubicacion\_ID (FK) & UUID & Referencia a la entidad \textbf{Ubicacion}. \\
+ & StockDisponible & INT & Unidades físicas disponibles para venta inmediata. \\
+ & StockReservado & INT & Unidades retenidas temporalmente por e-commerce. \\
+ & StockTransito & INT & Unidades en proceso de traslado entre bodegas. \\ \bottomrule
+\end{tabularx}
+\caption{Diccionario de datos: Catálogo, Ubicaciones e Inventario.}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\toprule
+\textbf{Entidad} & \textbf{Atributo} & \textbf{Tipo de Dato} & \textbf{Descripción} \\ \midrule
+\textbf{Reserva} & ID\_Reserva (PK) & UUID & Identificador único de la reserva temporal. \\
+ & Producto\_ID (FK) & UUID & Referencia a la entidad \textbf{Producto}. \\
+ & Ubicacion\_ID (FK) & UUID & Referencia a la entidad \textbf{Ubicacion}. \\
+ & Cantidad & INT & Cantidad de unidades bloqueadas. \\
+ & Estado & ENUM & Estado de la reserva: 'Pendiente', 'Confirmada', 'Expirada'. \\
+ & FechaCreacion & TIMESTAMP & Marca de tiempo de la creación de la reserva. \\
+ & FechaExpiracion & TIMESTAMP & Límite temporal para consolidar la transacción. \\ \addlinespace
+\textbf{Orden} & ID\_Orden (PK) & UUID & Identificador único de la orden de venta. \\
+ & Canal & ENUM & Origen del pedido: 'POS\_Fisico' o 'E\_Commerce'. \\
+ & Estado & ENUM & Estado del pedido: 'Creada', 'Pagada', 'Despachada', 'Cancelada'. \\
+ & FechaCreacion & TIMESTAMP & Marca de tiempo de registro de la orden. \\
+ & Total & DECIMAL(12,2) & Monto total de la transacción comercial. \\ \addlinespace
+\textbf{LineaOrden} & ID\_Linea (PK) & UUID & Identificador de la línea de detalle de la orden. \\
+ & Orden\_ID (FK) & UUID & Referencia a la entidad \textbf{Orden}. \\
+ & Producto\_ID (FK) & UUID & Referencia a la entidad \textbf{Producto}. \\
+ & Cantidad & INT & Cantidad de unidades compradas. \\
+ & PrecioUnitario & DECIMAL(12,2) & Precio facturado para este producto. \\ \bottomrule
+\end{tabularx}
+\caption{Diccionario de datos: Reservas temporales y Órdenes de venta.}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\toprule
+\textbf{Entidad} & \textbf{Atributo} & \textbf{Tipo de Dato} & \textbf{Descripción} \\ \midrule
+\textbf{HistorialInv} & ID\_Historial (PK) & UUID & Identificador único para auditoría de movimientos. \\
+ & Producto\_ID (FK) & UUID & Referencia al producto afectado. \\
+ & Ubicacion\_ID (FK) & UUID & Ubicación física del movimiento. \\
+ & Cantidad & INT & Unidades modificadas (valor positivo o negativo). \\
+ & TipoMovimiento & ENUM & Tipo de evento: 'Venta', 'Reserva\_Creada', 'Reserva\_Expirada', 'Recepcion', 'Ajuste'. \\
+ & FechaHora & TIMESTAMP & Fecha y hora exacta de la transacción. \\
+ & Usuario\_ID (FK) & UUID & Identificador del operario responsable. \\ \bottomrule
+\end{tabularx}
+\caption{Diccionario de datos: Historial de inventario para log de auditoría.}
+\end{table}
+
+\section{Arquitectura SOA y Mediación a través de un Bus de Servicios (ESB)}
+Para resolver la integración y sincronización en tiempo real de múltiples canales, el sistema se ha estructurado bajo el patrón \textbf{SOA (Service-Oriented Architecture)} incorporando un \textbf{Enterprise Service Bus (ESB)} central como columna vertebral de comunicación. El ESB no solo actúa como canal de mensajería (utilizando un broker de mensajería como RabbitMQ), sino que implementa componentes de mediación clásicos que desacoplan físicamente y lógicamente a los clientes y servicios.
+
+\subsection{El Rol del Enterprise Service Bus (ESB)}
+En lugar de depender de llamadas HTTP directas y acopladas punto a punto entre la aplicación web e-commerce, el POS físico y los servicios de backend, el ESB centraliza las interacciones y proporciona las siguientes capacidades de infraestructura:
+\begin{itemize}
+    \item \textbf{Garantía de Entrega y Asincronía:} Permite que las órdenes del canal digital ingresen a colas de mensajería seguras. Si el servicio de inventario o el sistema externo del courier de despachos sufren una caída temporal, las solicitudes permanecen encoladas garantizando que ningún pedido se pierda.
+    \item \textbf{Desacoplamiento de Protocolos:} El bus permite conectar componentes heterogéneos, permitiendo que clientes web interactúen de manera sincrónica (REST/JSON) mientras que la comunicación interna y con sistemas legados se realice asíncronamente (AMQP/gRPC).
+\end{itemize}
+
+\subsection{Mecanismos Clásicos de Mediación SOA Implementados}
+El ESB actúa como una capa de mediación activa, aplicando patrones de integración empresarial (EIP) para procesar los mensajes en tránsito:
+
+\begin{enumerate}
+    \item \textbf{Enrutamiento Basado en Contenido (Content-Based Router):} Cuando el ESB recibe un mensaje de orden, inspecciona el campo \texttt{canal} del payload. 
+    \begin{itemize}
+        \item Si proviene de \texttt{E\_Commerce}, enruta el mensaje hacia la cola de validación de reservas y pasarela de pago.
+        \item Si proviene de \texttt{POS\_Fisico}, el mensaje es enrutado directamente al canal de facturación local e impresión de boleta física.
+    \end{itemize}
+    
+    \item \textbf{Transformación y Traducción de Datos (Data Transformer):} Los canales de venta externos (como Shopify o un POS heredado) envían estructuras de datos propietarias. La capa de mediación del ESB traduce estos formatos a un esquema de datos estándar del sistema (denominado \textit{Modelo Canónico}) antes de que ingresen a los servicios core de inventario.
+    
+    \item \textbf{Enriquecimiento de Mensajes (Message Enricher):} Cuando una orden es capturada por el bus con información básica (ej. SKU y cantidad), el mediador consulta dinámicamente al servicio de catálogo para inyectar datos adicionales (descripción, peso para el courier, precio unitario vigente) antes de despachar el payload completo al servicio de persistencia y despacho.
+    
+    \item \textbf{Puente de Protocolos (Protocol Bridge):} El ESB traduce las peticiones HTTP REST síncronas provenientes del frontend POS en mensajes AMQP dirigidos al backend, y viceversa, permitiendo que el sistema se comunique eficientemente sin acoplar tecnológicamente sus extremos.
+\end{enumerate}
+
+\subsection{Componentes de la Arquitectura}
+Bajo este esquema de mediación, los componentes del ecosistema SOA se dividen en:
+
+\subsubsection{Componentes Cliente (Consumidores de Servicios)}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Cliente Web POS (Punto de Venta):} Interfaz local en la tienda física para vendedores. Consume servicios a través del ESB de forma síncrona para consultas de stock rápidas y de forma asíncrona para el cierre de caja.
+    \item \textbf{Panel de Administración (Dashboard):} Aplicación web para el encargado de e-commerce y administradores. Permite monitorear el flujo de colas en el ESB, verificar alertas de stock y gestionar reservas en tiempo real.
+\end{itemize}
+
+\subsubsection{Componentes de Servicio (Proveedores del Bus)}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Auth Service:} Servicio transversal expuesto en el bus para verificar credenciales y gestionar roles de acceso (RBAC).
+    \item \textbf{Inventory Service:} Servicio core que gestiona el inventario omnicanal físico y web, respondiendo a los comandos de reserva y confirmación enviados por el ESB.
+    \item \textbf{Sales \& Order Service:} Orquesta el ciclo de venta, consumiendo el Inventory Service mediante el ESB. Si una venta web falla en la pasarela de pago, este servicio coordina la compensación (cancelación de reserva).
+\end{itemize}
+
+\section{Interfaces de los Componentes y Contratos Técnicos}
+Para garantizar la interoperabilidad del sistema Sync-Stock en un entorno omnicanal crítico en tiempo real, se definen contratos técnicos rigurosos. A continuación, se resume la relación entre interfaces, Requerimientos Funcionales (RF) y Requerimientos No Funcionales (RNF):
+
+\begin{table}[h!]
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}lXll@{}}
+\toprule
+\textbf{Servicio} & \textbf{Endpoint / Operación} & \textbf{RF Satisfecho} & \textbf{RNF Mapeado} \\ \midrule
+Auth Service & \texttt{POST /api/v1/auth/login} & RF-007, RF-008 & Seguridad, Expiración (30 min) \\ \addlinespace
+Inventory Service & \texttt{POST /api/v1/inventory/reserve} & RF-002 & Consistencia Estricta, Alta Concurrencia \\ \addlinespace
+Inventory Service & \texttt{POST /api/v1/inventory/commit} & RF-004, RF-006 & Integridad Transaccional, Auditoría \\ \addlinespace
+Inventory Service & \texttt{GET /api/v1/inventory/stock/\{sku\}} & RF-001, RF-003 & Baja Latencia ($<200$ ms) \\ \bottomrule
+\end{tabularx}
+\caption{Resumen de endpoints de servicios, RFs y RNFs.}
+\end{table}
+
+\subsection{Detalle de Contratos Técnicos de la API}
+A continuación se especifican las estructuras de las peticiones, las respuestas de éxito y el control de errores detallado (en formato JSON) para cada interfaz.
+
+\subsubsection{1. Autenticación de Usuarios (Auth Service)}
+\textbf{Endpoint:} \texttt{POST /api/v1/auth/login} \\
+\textbf{Descripción:} Valida las credenciales del operario y devuelve un token firmado (JWT) con su rol asociado (RBAC).
+
+\paragraph{Estructura de la Petición (Request):}
+\begin{verbatim}
+{
+  "username": "fllancao",
+  "password": "mi_clave_segura_123"
+}
+\end{verbatim}
+
+\paragraph{Respuesta de Éxito (200 OK):}
+\begin{verbatim}
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhMWIy...[truncado]",
+  "usuario": {
+    "id": "e4b2d288-43ea-46b2-a5e2-88229988ff22",
+    "nombre": "Fernando Llancao",
+    "rol": "Administrador"
+  },
+  "expiraEnSegundos": 1800
+}
+\end{verbatim}
+
+\paragraph{Respuesta de Error (401 Unauthorized):}
+\begin{verbatim}
+{
+  "codigoError": "CREDENCIALES_INVALIDAS",
+  "mensaje": "El usuario o la contraseña ingresados son incorrectos.",
+  "timestamp": "2026-06-03T01:10:00Z"
+}
+\end{verbatim}
+
+\newpage
+\subsubsection{2. Reserva Temporal de Stock (Inventory Service)}
+\textbf{Endpoint:} \texttt{POST /api/v1/inventory/reserve} \\
+\textbf{Descripción:} Reserva temporalmente unidades de un producto en una ubicación específica para evitar la sobreventa desde el canal web.
+
+\paragraph{Estructura de la Petición (Request):}
+\begin{verbatim}
+{
+  "ordenId": "d3b07384-d113-49c5-a5d6-d68aee460183",
+  "items": [
+    {
+      "sku": "PES-CANA-CARBON-01",
+      "cantidad": 2,
+      "ubicacionId": "e2a22288-e22a-43c2-bf72-888e422201b1"
+    }
+  ]
+}
+\end{verbatim}
+
+\paragraph{Respuesta de Éxito (201 Created):}
+\begin{verbatim}
+{
+  "reservaId": "b1b88220-432a-4632-a5e2-88229988ff22",
+  "estado": "Pendiente",
+  "fechaCreacion": "2026-06-03T01:10:00Z",
+  "fechaExpiracion": "2026-06-03T01:25:00Z"
+}
+\end{verbatim}
+
+\paragraph{Respuesta de Error - Stock Insuficiente (409 Conflict):}
+\begin{verbatim}
+{
+  "codigoError": "STOCK_INSUFICIENTE",
+  "mensaje": "No hay suficiente stock para el producto indicado en esa bodega.",
+  "timestamp": "2026-06-03T01:10:01Z",
+  "detalles": {
+    "sku": "PES-CANA-CARBON-01",
+    "stockDisponible": 1,
+    "cantidadSolicitada": 2
+  }
+}
+\end{verbatim}
+
+\subsubsection{3. Confirmación de Reserva (Inventory Service)}
+\textbf{Endpoint:} \texttt{POST /api/v1/inventory/commit} \\
+\textbf{Descripción:} Transforma una reserva temporal en una venta confirmada y descontada definitivamente.
+
+\paragraph{Estructura de la Petición (Request):}
+\begin{verbatim}
+{
+  "reservaId": "b1b88220-432a-4632-a5e2-88229988ff22",
+  "ordenId": "d3b07384-d113-49c5-a5d6-d68aee460183"
+}
+\end{verbatim}
+
+\paragraph{Respuesta de Éxito (200 OK):}
+\begin{verbatim}
+{
+  "status": "success",
+  "mensaje": "Reserva confirmada e inventario rebajado definitivamente.",
+  "transaccionId": "c8e228c2-482a-466d-88b1-2299aaffd883"
+}
+\end{verbatim}
+
+\paragraph{Respuesta de Error - Reserva Expirada o Inexistente (410 Gone):}
+\begin{verbatim}
+{
+  "codigoError": "RESERVA_NO_VALIDA",
+  "mensaje": "La reserva no existe, ya fue consolidada o expiró tras el límite de 15 minutos.",
+  "timestamp": "2026-06-03T01:10:05Z",
+  "detalles": {
+    "reservaId": "b1b88220-432a-4632-a5e2-88229988ff22",
+    "estadoActual": "Expirada"
+  }
+}
+\end{verbatim}
+
+\subsubsection{4. Consulta de Stock en Tiempo Real (Inventory Service)}
+\textbf{Endpoint:} \texttt{GET /api/v1/inventory/stock/\{sku\}} \\
+\textbf{Descripción:} Devuelve la disponibilidad detallada de un SKU en todas las ubicaciones físicas y bodegas registradas.
+
+\paragraph{Respuesta de Éxito (200 OK):}
+\begin{verbatim}
+{
+  "sku": "PES-CANA-CARBON-01",
+  "nombre": "Caña de Pescar Carbono Pro",
+  "precio": 45000.00,
+  "inventario": [
+    {
+      "ubicacionId": "e2a22288-e22a-43c2-bf72-888e422201b1",
+      "ubicacionNombre": "Tienda Santiago POS",
+      "stockDisponible": 15,
+      "stockReservado": 2,
+      "stockTransito": 0
+    },
+    {
+      "ubicacionId": "a5d3f288-43ea-46b2-a5e2-88229988abcd",
+      "ubicacionNombre": "Bodega Principal E-commerce",
+      "stockDisponible": 50,
+      "stockReservado": 8,
+      "stockTransito": 10
+    }
+  ]
+}
+\end{verbatim}
+
+
+\section{Conclusiones}
+Con la definición del modelo de datos relacional y la estructuración en base a servicios (SOA), el sistema \textbf{Sync-Stock} adquiere la solidez técnica necesaria para erradicar la sobreventa en PescaTotal. La separación entre componentes cliente y servicio asegura que la plataforma sea escalable, permitiendo a futuro integrar nuevos canales de venta sin alterar el núcleo del control de inventario. La estricta vinculación de cada interfaz con los requerimientos de seguridad, consistencia y baja latencia asegura el cumplimiento tanto de los objetivos comerciales como de los estándares de ingeniería requeridos.
+\end{document}
