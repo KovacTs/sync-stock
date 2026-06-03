@@ -104,14 +104,17 @@ export default function App() {
       setProducts(productsData);
 
       const oRes = await fetch(`${API_BASE_URL}/sales/orders`);
+      if (!oRes.ok) throw new Error();
       const ordersData = await oRes.json();
       setOrders(ordersData);
 
       const rRes = await fetch(`${API_BASE_URL}/sales/reservations`);
+      if (!rRes.ok) throw new Error();
       const resData = await rRes.json();
       setReservations(resData);
 
       const hRes = await fetch(`${API_BASE_URL}/sales/history`);
+      if (!hRes.ok) throw new Error();
       const histData = await hRes.json();
       setHistory(histData);
 

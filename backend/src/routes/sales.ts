@@ -1,18 +1,36 @@
 import { Router } from 'express';
 import { requestSOABus } from '../lib/soabus';
 import { verificarToken, AuthenticatedRequest } from '../middleware/auth';
+import { prisma } from '../lib/prisma';
 
 export const salesRouter = Router();
 
 // 1. Get all products catalog
 salesRouter.get('/products', async (req, res) => {
   try {
-    const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'products' }));
-    if (status === 'NK') throw new Error(data);
-    return res.status(200).json(JSON.parse(data));
+    const products = await prisma.producto.findMany({
+      select: {
+        sku: true,
+        nombre: true,
+        precio: true,
+        inventarios: {
+          select: {
+            stockDisponible: true,
+            stockReservado: true,
+            ubicacion: {
+              select: {
+                nombre: true,
+                tipo: true
+              }
+            }
+          }
+        }
+      }
+    });
+    return res.status(200).json(products);
   } catch (error: any) {
-    console.error('Error fetching products via ESB:', error);
-    return res.status(500).json({ error: 'Error al consultar catálogo de productos en el bus.' });
+    console.error('Error fetching products directly:', error);
+    return res.status(500).json({ error: 'Error al consultar catálogo de productos.' });
   }
 });
 
@@ -60,35 +78,72 @@ salesRouter.post('/checkout', verificarToken, async (req: AuthenticatedRequest, 
 // 3. Get all orders
 salesRouter.get('/orders', async (req, res) => {
   try {
-    const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'orders' }));
-    if (status === 'NK') throw new Error(data);
-    return res.status(200).json(JSON.parse(data));
+    const orders = await prisma.orden.findMany({
+      select: {
+        id: true,
+        canal: true,
+        estado: true,
+        fechaCreacion: true,
+        total: true
+      },
+      orderBy: { fechaCreacion: 'desc' }
+    });
+    return res.status(200).json(orders);
   } catch (error: any) {
-    console.error('Error fetching orders via ESB:', error);
-    return res.status(500).json({ error: 'Error al recuperar órdenes del bus.' });
+    console.error('Error fetching orders directly:', error);
+    return res.status(500).json({ error: 'Error al recuperar órdenes.' });
   }
 });
 
 // 4. Get active reservations
 salesRouter.get('/reservations', async (req, res) => {
   try {
-    const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'reservations' }));
-    if (status === 'NK') throw new Error(data);
-    return res.status(200).json(JSON.parse(data));
+    const reservations = await prisma.reserva.findMany({
+      select: {
+        id: true,
+        cantidad: true,
+        estado: true,
+        fechaExpiracion: true,
+        producto: {
+          select: { nombre: true }
+        },
+        ubicacion: {
+          select: { nombre: true }
+        }
+      },
+      orderBy: { fechaCreacion: 'desc' }
+    });
+    return res.status(200).json(reservations);
   } catch (error: any) {
-    console.error('Error fetching reservations via ESB:', error);
-    return res.status(500).json({ error: 'Error al recuperar reservas del bus.' });
+    console.error('Error fetching reservations directly:', error);
+    return res.status(500).json({ error: 'Error al recuperar reservas.' });
   }
 });
 
 // 5. Get inventory log (audit history)
 salesRouter.get('/history', async (req, res) => {
   try {
-    const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'history' }));
-    if (status === 'NK') throw new Error(data);
-    return res.status(200).json(JSON.parse(data));
+    const history = await prisma.historialInv.findMany({
+      select: {
+        id: true,
+        fechaHora: true,
+        cantidad: true,
+        tipoMovimiento: true,
+        producto: {
+          select: { nombre: true }
+        },
+        ubicacion: {
+          select: { nombre: true }
+        },
+        usuario: {
+          select: { username: true, rol: true }
+        }
+      },
+      orderBy: { fechaHora: 'desc' }
+    });
+    return res.status(200).json(history);
   } catch (error: any) {
-    console.error('Error fetching inventory history via ESB:', error);
-    return res.status(500).json({ error: 'Error al recuperar historial de inventario del bus.' });
+    console.error('Error fetching inventory history directly:', error);
+    return res.status(500).json({ error: 'Error al recuperar historial de inventario.' });
   }
 });
