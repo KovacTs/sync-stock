@@ -47,7 +47,7 @@ Ejecutar los siguientes comandos para subir el proyecto:
 git add .
 
 # 2. Confirma el commit localmente
-git commit -m "docs: corregir informe y agregar documentacion de arquitectura"
+git commit -m "text"
 
 # 3. Renombra la rama a main si no lo has hecho
 git branch -M main
