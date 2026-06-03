@@ -40,7 +40,7 @@ Para asegurar la integridad transaccional y evitar condiciones de carrera en ven
 
 ## 📝 Instrucciones de Git para Subir el Proyecto
 
-Dado que ya configuré tu identidad local (`KovacTs` / `kovacts@users.noreply.github.com`) y el remote de GitHub en este repositorio, solo debes abrir tu terminal en la carpeta `/home/kovac/Proyectos/Sync-Stock` y ejecutar los siguientes comandos para subir el proyecto:
+Ejecutar los siguientes comandos para subir el proyecto:
 
 ```bash
 # 1. Agrega todos los archivos nuevos (informe, pdf, .gitignore, README.md)
