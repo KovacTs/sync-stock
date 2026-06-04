@@ -49,9 +49,5 @@ git add .
 # 2. Confirma el commit localmente
 git commit -m "text"
 
-# 3. Renombra la rama a main si no lo has hecho
-git branch -M main
-
-# 4. Sube el proyecto a tu GitHub
-git push -u origin main
+git push
 ```
