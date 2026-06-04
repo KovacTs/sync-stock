@@ -302,3 +302,64 @@ async function getSystemUserId(tx: any): Promise<string> {
   });
   return newUser.id;
 }
+
+/**
+ * Creates a new product and initializes its inventory records in all locations.
+ */
+export async function createProduct(sku: string, nombre: string, precio: number, initialStock?: Array<{ ubicacionNombre: string, cantidad: number }>) {
+  return await prisma.$transaction(async (tx) => {
+    const existing = await tx.producto.findUnique({ where: { sku } });
+    if (existing) throw new Error('PRODUCT_ALREADY_EXISTS');
+
+    const product = await tx.producto.create({
+      data: { sku, nombre, precio }
+    });
+
+    const locations = await tx.ubicacion.findMany();
+    for (const loc of locations) {
+      const stockItem = initialStock?.find(i => i.ubicacionNombre === loc.nombre);
+      const qty = stockItem ? stockItem.cantidad : 0;
+      await tx.inventario.create({
+        data: {
+          productoId: product.id,
+          ubicacionId: loc.id,
+          stockDisponible: qty,
+          stockReservado: 0,
+          stockTransito: 0
+        }
+      });
+      if (qty > 0) {
+        await tx.historialInv.create({
+          data: {
+            productoId: product.id,
+            ubicacionId: loc.id,
+            cantidad: qty,
+            tipoMovimiento: TipoMovimiento.Recepcion,
+            usuarioId: await getSystemUserId(tx)
+          }
+        });
+      }
+    }
+    return product;
+  });
+}
+
+/**
+ * Updates product details (name and price).
+ */
+export async function updateProduct(sku: string, nombre: string, precio: number) {
+  return await prisma.producto.update({
+    where: { sku },
+    data: { nombre, precio }
+  });
+}
+
+/**
+ * Dispatches an order, changing its status to Despachada.
+ */
+export async function dispatchOrder(orderId: string) {
+  return await prisma.orden.update({
+    where: { id: orderId },
+    data: { estado: EstadoOrden.Despachada }
+  });
+}

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requestSOABus } from '../lib/soabus';
-import { verificarToken, AuthenticatedRequest } from '../middleware/auth';
+import { verificarToken, AuthenticatedRequest, permitirRoles } from '../middleware/auth';
 
 export const salesRouter = Router();
 
@@ -19,7 +19,7 @@ salesRouter.get('/products', async (req, res) => {
 });
 
 // 2. Direct POS Checkout
-salesRouter.post('/checkout', verificarToken, async (req: AuthenticatedRequest, res) => {
+salesRouter.post('/checkout', verificarToken, permitirRoles('Vendedor', 'Admin'), async (req: AuthenticatedRequest, res) => {
   try {
     const { items, ubicacion } = req.body;
 
@@ -60,7 +60,7 @@ salesRouter.post('/checkout', verificarToken, async (req: AuthenticatedRequest, 
 });
 
 // 3. Get all orders (via ESB)
-salesRouter.get('/orders', async (req, res) => {
+salesRouter.get('/orders', verificarToken, permitirRoles('Admin'), async (req, res) => {
   try {
     const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'orders' }));
     if (status === 'NK') {
@@ -74,7 +74,7 @@ salesRouter.get('/orders', async (req, res) => {
 });
 
 // 4. Get active reservations (via ESB)
-salesRouter.get('/reservations', async (req, res) => {
+salesRouter.get('/reservations', verificarToken, permitirRoles('Admin', 'ECommerce'), async (req, res) => {
   try {
     const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'reservations' }));
     if (status === 'NK') {
@@ -88,7 +88,7 @@ salesRouter.get('/reservations', async (req, res) => {
 });
 
 // 5. Get inventory log (audit history) (via ESB)
-salesRouter.get('/history', async (req, res) => {
+salesRouter.get('/history', verificarToken, permitirRoles('Admin'), async (req, res) => {
   try {
     const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'history' }));
     if (status === 'NK') {
@@ -98,5 +98,78 @@ salesRouter.get('/history', async (req, res) => {
   } catch (error: any) {
     console.error('Error fetching inventory history via ESB:', error);
     return res.status(500).json({ error: 'Error al recuperar historial de inventario del bus.' });
+  }
+});
+
+// 6. Create Product (RF-003)
+salesRouter.post('/products', verificarToken, permitirRoles('Admin'), async (req, res) => {
+  try {
+    const { sku, nombre, precio, initialStock } = req.body;
+    if (!sku || !nombre || !precio) {
+      return res.status(400).json({
+        codigo: 'DATOS_REQUERIDOS',
+        mensaje: 'SKU, nombre y precio son requeridos.'
+      });
+    }
+
+    const { status, data } = await requestSOABus(
+      'sales',
+      JSON.stringify({ action: 'create-product', sku, nombre, precio, initialStock })
+    );
+
+    if (status === 'NK') {
+      return res.status(400).json({ codigo: 'ERROR_NEGOCIO', mensaje: data });
+    }
+
+    return res.status(201).json(JSON.parse(data));
+  } catch (error: any) {
+    console.error('Error creating product via ESB:', error);
+    return res.status(500).json({ error: 'Error al crear producto en el bus.' });
+  }
+});
+
+// 7. Update Product (RF-003)
+salesRouter.put('/products/:sku', verificarToken, permitirRoles('Admin'), async (req, res) => {
+  try {
+    const { sku } = req.params;
+    const { nombre, precio } = req.body;
+
+    if (!nombre || !precio) {
+      return res.status(400).json({
+        codigo: 'DATOS_REQUERIDOS',
+        mensaje: 'Nombre y precio son requeridos.'
+      });
+    }
+
+    const { status, data } = await requestSOABus(
+      'sales',
+      JSON.stringify({ action: 'update-product', sku, nombre, precio })
+    );
+
+    if (status === 'NK') {
+      return res.status(400).json({ codigo: 'ERROR_NEGOCIO', mensaje: data });
+    }
+
+    return res.status(200).json(JSON.parse(data));
+  } catch (error: any) {
+    console.error('Error updating product via ESB:', error);
+    return res.status(500).json({ error: 'Error al actualizar producto en el bus.' });
+  }
+});
+
+// 8. Dispatch Order (RF-004)
+salesRouter.post('/orders/:id/dispatch', verificarToken, permitirRoles('Admin', 'ECommerce'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, data } = await requestSOABus('sales', JSON.stringify({ action: 'dispatch-order', orderId: id }));
+
+    if (status === 'NK') {
+      return res.status(400).json({ codigo: 'ERROR_NEGOCIO', mensaje: data });
+    }
+
+    return res.status(200).json(JSON.parse(data));
+  } catch (error: any) {
+    console.error('Error dispatching order via ESB:', error);
+    return res.status(500).json({ error: 'Error al despachar orden en el bus.' });
   }
 });

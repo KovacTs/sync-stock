@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requestSOABus } from '../lib/soabus';
-import { verificarToken, AuthenticatedRequest } from '../middleware/auth';
+import { verificarToken, AuthenticatedRequest, permitirRoles } from '../middleware/auth';
 
 export const inventoryRouter = Router();
 
@@ -29,7 +29,7 @@ inventoryRouter.get('/stock/:sku', async (req, res) => {
 });
 
 // 2. Reserve Stock
-inventoryRouter.post('/reserve', verificarToken, async (req: AuthenticatedRequest, res) => {
+inventoryRouter.post('/reserve', verificarToken, permitirRoles('Admin', 'ECommerce'), async (req: AuthenticatedRequest, res) => {
   try {
     const { sku, cantidad, ubicacion } = req.body;
 
@@ -84,7 +84,7 @@ inventoryRouter.post('/reserve', verificarToken, async (req: AuthenticatedReques
 });
 
 // 3. Commit Reservation
-inventoryRouter.post('/commit', verificarToken, async (req: AuthenticatedRequest, res) => {
+inventoryRouter.post('/commit', verificarToken, permitirRoles('Admin', 'ECommerce'), async (req: AuthenticatedRequest, res) => {
   try {
     const { reservaId } = req.body;
 
