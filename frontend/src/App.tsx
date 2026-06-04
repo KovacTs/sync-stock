@@ -55,7 +55,7 @@ export default function App() {
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'pos' | 'dashboard' | 'history' | 'reservations'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'dashboard' | 'history' | 'reservations' | 'products'>('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -73,6 +73,17 @@ export default function App() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // RF-003: Product CRUD state
+  const [newSku, setNewSku] = useState('');
+  const [newNombre, setNewNombre] = useState('');
+  const [newPrecio, setNewPrecio] = useState('');
+  const [newInitialStockValdivia, setNewInitialStockValdivia] = useState('0');
+  const [newInitialStockEcommerce, setNewInitialStockEcommerce] = useState('0');
+
+  const [editingSku, setEditingSku] = useState<string | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editPrecio, setEditPrecio] = useState('');
+
   // Auto-connect fallback to mock data if API fails
   const [isUsingMocks, setIsUsingMocks] = useState(false);
 
@@ -81,6 +92,32 @@ export default function App() {
     fetchData();
     const interval = setInterval(fetchData, 8000); // refresh lists every 8 seconds
     return () => clearInterval(interval);
+  }, [token]);
+
+  // RF-009: Inactivity logout detector (30 minutes)
+  useEffect(() => {
+    if (!token) return;
+
+    let timeoutId: number;
+    const INACTIVITY_TIME = 30 * 60 * 1000; // 30 mins
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleLogout();
+        showNotification('Sesión cerrada automáticamente por inactividad (30 minutos).', 'warning');
+      }, INACTIVITY_TIME);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart', 'click'];
+    events.forEach(event => window.addEventListener(event, resetTimer));
+
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(event => window.removeEventListener(event, resetTimer));
+    };
   }, [token]);
 
   const showNotification = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
@@ -521,6 +558,140 @@ export default function App() {
     showNotification('Pago recibido. Reserva consolidada a venta (Simulado).', 'success');
   };
 
+  // RF-003: Product CRUD functions
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSku || !newNombre || !newPrecio) return;
+    setLoading(true);
+    try {
+      const initialStock = [
+        { ubicacionNombre: 'Tienda Valdivia', cantidad: Number(newInitialStockValdivia) },
+        { ubicacionNombre: 'Bodega E-commerce', cantidad: Number(newInitialStockEcommerce) }
+      ];
+      
+      const res = await fetch(`${API_BASE_URL}/sales/products`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ sku: newSku, nombre: newNombre, precio: Number(newPrecio), initialStock })
+      });
+      const data = await res.json();
+      if (res.status === 201) {
+        showNotification('Producto creado exitosamente.', 'success');
+        setNewSku('');
+        setNewNombre('');
+        setNewPrecio('');
+        setNewInitialStockValdivia('0');
+        setNewInitialStockEcommerce('0');
+        fetchData();
+      } else {
+        throw new Error(data.mensaje || 'Error al crear producto');
+      }
+    } catch (err: any) {
+      if (isUsingMocks) {
+        const mockNewProduct: Product = {
+          id: crypto.randomUUID(),
+          sku: newSku,
+          nombre: newNombre,
+          precio: Number(newPrecio),
+          inventarios: [
+            { stockDisponible: Number(newInitialStockValdivia), stockReservado: 0, ubicacion: { nombre: 'Tienda Valdivia', tipo: 'Tienda' } },
+            { stockDisponible: Number(newInitialStockEcommerce), stockReservado: 0, ubicacion: { nombre: 'Bodega E-commerce', tipo: 'Bodega' } }
+          ]
+        };
+        setProducts([...products, mockNewProduct]);
+        setNewSku('');
+        setNewNombre('');
+        setNewPrecio('');
+        setNewInitialStockValdivia('0');
+        setNewInitialStockEcommerce('0');
+        showNotification('Producto creado (Simulado).', 'success');
+      } else {
+        showNotification(err.message || 'Error al crear producto', 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSku || !editNombre || !editPrecio) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/sales/products/${editingSku}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ nombre: editNombre, precio: Number(editPrecio) })
+      });
+      const data = await res.json();
+      if (res.status === 200) {
+        showNotification('Producto actualizado exitosamente.', 'success');
+        setEditingSku(null);
+        setEditNombre('');
+        setEditPrecio('');
+        fetchData();
+      } else {
+        throw new Error(data.mensaje || 'Error al actualizar producto');
+      }
+    } catch (err: any) {
+      if (isUsingMocks) {
+        setProducts(products.map(p => p.sku === editingSku ? { ...p, nombre: editNombre, precio: Number(editPrecio) } : p));
+        setEditingSku(null);
+        setEditNombre('');
+        setEditPrecio('');
+        showNotification('Producto actualizado (Simulado).', 'success');
+      } else {
+        showNotification(err.message || 'Error al actualizar producto', 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // RF-004: Dispatch order
+  const handleDispatchOrder = async (orderId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/sales/orders/${orderId}/dispatch`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (res.status === 200) {
+        showNotification('Orden despachada y registrada en el sistema.', 'success');
+        fetchData();
+      } else {
+        throw new Error(data.mensaje || 'Error al despachar orden');
+      }
+    } catch (err: any) {
+      if (isUsingMocks) {
+        setOrders(orders.map(o => o.id === orderId ? { ...o, estado: 'Despachada' } : o));
+        showNotification('Orden despachada (Simulado).', 'success');
+      } else {
+        showNotification(err.message || 'Error despachando orden', 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // RF-005: Low stock alert checker
+  const getLowStockAlerts = () => {
+    const alerts: Array<{ product: Product; location: string; qty: number }> = [];
+    products.forEach(p => {
+      p.inventarios?.forEach(inv => {
+        if (inv.stockDisponible <= 5) {
+          alerts.push({
+            product: p,
+            location: inv.ubicacion.nombre,
+            qty: inv.stockDisponible
+          });
+        }
+      });
+    });
+    return alerts;
+  };
+
   // LOGIN SCREEN
   if (!token) {
     return (
@@ -613,7 +784,7 @@ export default function App() {
             🛒 POS Vendedor
           </button>
           
-          {rol === 'Admin' && (
+          {(rol === 'Admin' || rol === 'ECommerce') && (
             <>
               <button
                 onClick={() => setActiveTab('dashboard')}
@@ -643,19 +814,37 @@ export default function App() {
                 🌐 Reservas Web
               </button>
 
-              <button
-                onClick={() => setActiveTab('history')}
-                className="btn-primary"
-                style={{
-                  padding: '8px 16px',
-                  fontSize: '0.9rem',
-                  background: activeTab === 'history' ? undefined : 'transparent',
-                  boxShadow: activeTab === 'history' ? undefined : 'none',
-                  border: activeTab === 'history' ? undefined : '1px solid var(--border-color)'
-                }}
-              >
-                📜 Auditoría ESB
-              </button>
+              {rol === 'Admin' && (
+                <>
+                  <button
+                    onClick={() => setActiveTab('products')}
+                    className="btn-primary"
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '0.9rem',
+                      background: activeTab === 'products' ? undefined : 'transparent',
+                      boxShadow: activeTab === 'products' ? undefined : 'none',
+                      border: activeTab === 'products' ? undefined : '1px solid var(--border-color)'
+                    }}
+                  >
+                    🛠️ Catálogo
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('history')}
+                    className="btn-primary"
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '0.9rem',
+                      background: activeTab === 'history' ? undefined : 'transparent',
+                      boxShadow: activeTab === 'history' ? undefined : 'none',
+                      border: activeTab === 'history' ? undefined : '1px solid var(--border-color)'
+                    }}
+                  >
+                    📜 Auditoría ESB
+                  </button>
+                </>
+              )}
             </>
           )}
         </nav>
@@ -666,6 +855,12 @@ export default function App() {
             <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{username}</div>
             <span className={`badge ${rol === 'Admin' ? 'badge-purple' : 'badge-blue'}`}>{rol}</span>
           </div>
+          <button onClick={() => {
+            handleLogout();
+            showNotification('Sesión cerrada por simulación de inactividad.', 'warning');
+          }} className="btn-primary" style={{ padding: '8px 12px', fontSize: '0.75rem', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.25)', marginRight: '8px', boxShadow: 'none' }}>
+            ⏳ Simular Inactividad
+          </button>
           <button onClick={handleLogout} className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', boxShadow: 'none' }}>
             Salir
           </button>
@@ -800,8 +995,29 @@ export default function App() {
       {/* ======================================= */}
       {/* TAB 2: REAL-TIME STOCK LEVELS          */}
       {/* ======================================= */}
-      {activeTab === 'dashboard' && rol === 'Admin' && (
+      {activeTab === 'dashboard' && (rol === 'Admin' || rol === 'ECommerce') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* RF-005: ALERTAS DE QUIEBRE DE STOCK */}
+          <div className="glass-panel" style={{ borderLeft: '4px solid var(--accent-red)' }}>
+            <h3>⚠️ Alertas de Quiebre de Stock (Umbral Crítico: 5 u)</h3>
+            {getLowStockAlerts().length === 0 ? (
+              <div style={{ color: '#34d399', fontSize: '0.9rem', padding: '8px 0' }}>
+                🟢 Todos los productos cuentan con stock suficiente en todas las ubicaciones.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                {getLowStockAlerts().map((alert, idx) => (
+                  <div key={idx} className="alert-box alert-error" style={{ margin: 0, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>
+                      <strong>¡Alerta de Stock Bajo!</strong> El producto <strong>{alert.product.nombre}</strong> (SKU: <code>{alert.product.sku}</code>) tiene solo <strong>{alert.qty}</strong> unidades disponibles en <strong>{alert.location}</strong>.
+                    </span>
+                    <span className="badge badge-danger">Crítico</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           
           {/* Stock Levels Dashboard Grid */}
           <div className="glass-panel">
@@ -911,6 +1127,7 @@ export default function App() {
                       <th>Total Venta</th>
                       <th>Estado</th>
                       <th>Fecha/Hora</th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -923,8 +1140,29 @@ export default function App() {
                           </span>
                         </td>
                         <td style={{ fontWeight: 700 }}>${Number(ord.total).toLocaleString('es-CL')}</td>
-                        <td><span className="badge badge-emerald">{ord.estado}</span></td>
+                        <td>
+                          <span className={`badge ${
+                            ord.estado === 'Pagada' ? 'badge-emerald' : 
+                            ord.estado === 'Despachada' ? 'badge-blue' : 'badge-warning'
+                          }`}>
+                            {ord.estado}
+                          </span>
+                        </td>
                         <td>{new Date(ord.fechaCreacion).toLocaleString('es-CL')}</td>
+                        <td>
+                          {ord.estado === 'Pagada' ? (
+                            <button
+                              onClick={() => handleDispatchOrder(ord.id)}
+                              className="btn-success"
+                              style={{ padding: '4px 8px', fontSize: '0.75rem', background: 'var(--accent-blue)', color: 'white', border: 'none' }}
+                              disabled={loading}
+                            >
+                              📦 Despachar
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Despachado</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -938,7 +1176,7 @@ export default function App() {
       {/* ======================================= */}
       {/* TAB 3: RESERVATIONS                     */}
       {/* ======================================= */}
-      {activeTab === 'reservations' && rol === 'Admin' && (
+      {activeTab === 'reservations' && (rol === 'Admin' || rol === 'ECommerce') && (
         <div className="glass-panel">
           <div style={{ marginBottom: '16px' }}>
             <h3>Reservas Activas de E-Commerce</h3>
@@ -1064,6 +1302,162 @@ export default function App() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ======================================= */}
+      {/* TAB 5: GESTIÓN DE PRODUCTOS (CRUD)      */}
+      {/* ======================================= */}
+      {activeTab === 'products' && rol === 'Admin' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* Create Product Form */}
+          <div className="glass-panel" style={{ borderLeft: '4px solid var(--accent-blue)' }}>
+            <h3>🛠️ Registrar Nuevo Producto</h3>
+            <form onSubmit={handleCreateProduct} style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', marginTop: '16px' }}>
+              <div style={{ flex: 1, minWidth: '150px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>SKU (Código Único)</label>
+                <input
+                  type="text"
+                  required
+                  className="form-input"
+                  value={newSku}
+                  onChange={(e) => setNewSku(e.target.value)}
+                  placeholder="PROD-001"
+                />
+              </div>
+
+              <div style={{ flex: 2, minWidth: '200px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Nombre de Producto</label>
+                <input
+                  type="text"
+                  required
+                  className="form-input"
+                  value={newNombre}
+                  onChange={(e) => setNewNombre(e.target.value)}
+                  placeholder="Camiseta Deportiva"
+                />
+              </div>
+
+              <div style={{ width: '120px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Precio ($)</label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  className="form-input"
+                  value={newPrecio}
+                  onChange={(e) => setNewPrecio(e.target.value)}
+                  placeholder="19990"
+                />
+              </div>
+
+              <div style={{ width: '120px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Stock Valdivia</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="form-input"
+                  value={newInitialStockValdivia}
+                  onChange={(e) => setNewInitialStockValdivia(e.target.value)}
+                />
+              </div>
+
+              <div style={{ width: '120px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Stock E-commerce</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="form-input"
+                  value={newInitialStockEcommerce}
+                  onChange={(e) => setNewInitialStockEcommerce(e.target.value)}
+                />
+              </div>
+
+              <button type="submit" className="btn-primary" style={{ height: '45px' }} disabled={loading}>
+                {loading ? 'Guardando...' : 'Crear Producto'}
+              </button>
+            </form>
+          </div>
+
+          {/* Edit Product Section */}
+          {editingSku && (
+            <div className="glass-panel" style={{ borderLeft: '4px solid var(--accent-purple)' }}>
+              <h3>✏️ Editar Producto: {editingSku}</h3>
+              <form onSubmit={handleUpdateProduct} style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', marginTop: '16px' }}>
+                <div style={{ flex: 2, minWidth: '200px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Nuevo Nombre</label>
+                  <input
+                    type="text"
+                    required
+                    className="form-input"
+                    value={editNombre}
+                    onChange={(e) => setEditNombre(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ width: '150px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Nuevo Precio ($)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    className="form-input"
+                    value={editPrecio}
+                    onChange={(e) => setEditPrecio(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" className="btn-primary" style={{ height: '45px' }} disabled={loading}>
+                    Guardar Cambios
+                  </button>
+                  <button type="button" className="btn-primary" onClick={() => setEditingSku(null)} style={{ height: '45px', background: 'transparent', border: '1px solid var(--border-color)', boxShadow: 'none' }}>
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Catalog list */}
+          <div className="glass-panel">
+            <h3>Catálogo de Artículos Registrados</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="custom-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Nombre</th>
+                    <th>Precio</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((prod) => (
+                    <tr key={prod.sku}>
+                      <td><span className="badge badge-blue">{prod.sku}</span></td>
+                      <td style={{ fontWeight: 600 }}>{prod.nombre}</td>
+                      <td>${prod.precio.toLocaleString('es-CL')}</td>
+                      <td>
+                        <button
+                          onClick={() => {
+                            setEditingSku(prod.sku);
+                            setEditNombre(prod.nombre);
+                            setEditPrecio(prod.precio.toString());
+                          }}
+                          className="btn-primary"
+                          style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--accent-blue)', background: 'transparent', color: 'var(--accent-blue)', boxShadow: 'none' }}
+                        >
+                          ✏️ Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
