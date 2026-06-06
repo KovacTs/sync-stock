@@ -1105,33 +1105,41 @@ export default function App() {
                   <tr>
                     <th>Producto</th>
                     <th>SKU</th>
-                    <th>Ubicación</th>
-                    <th>Tipo</th>
-                    <th>Stock Disponible</th>
-                    <th>Stock Reservado</th>
+                    <th>Disponible Tienda</th>
+                    <th>Disponible Bodega</th>
+                    <th>Reservado Tienda</th>
+                    <th>Reservado Bodega</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {products.flatMap((prod) =>
-                    prod.inventarios.map((inv, idx) => (
-                      <tr key={`${prod.sku}-${idx}`}>
+                  {products.map((prod) => {
+                    const invTienda = prod.inventarios.find(inv => inv.ubicacion.tipo === 'Tienda');
+                    const invBodega = prod.inventarios.find(inv => inv.ubicacion.tipo === 'Bodega');
+
+                    const dispTienda = invTienda ? invTienda.stockDisponible : 0;
+                    const dispBodega = invBodega ? invBodega.stockDisponible : 0;
+                    const resTienda = invTienda ? invTienda.stockReservado : 0;
+                    const resBodega = invBodega ? invBodega.stockReservado : 0;
+
+                    return (
+                      <tr key={prod.sku}>
                         <td style={{ fontWeight: 600 }}>{prod.nombre}</td>
                         <td><span className="badge badge-blue">{prod.sku}</span></td>
-                        <td>{inv.ubicacion.nombre}</td>
-                        <td>
-                          <span className={`badge ${inv.ubicacion.tipo === 'Tienda' ? 'badge-blue' : 'badge-purple'}`}>
-                            {inv.ubicacion.tipo}
-                          </span>
+                        <td style={{ color: dispTienda > 0 ? '#34d399' : '#f87171', fontWeight: 700 }}>
+                          {dispTienda} u
                         </td>
-                        <td style={{ color: inv.stockDisponible > 0 ? '#34d399' : '#f87171', fontWeight: 700 }}>
-                          {inv.stockDisponible} u
+                        <td style={{ color: dispBodega > 0 ? '#34d399' : '#f87171', fontWeight: 700 }}>
+                          {dispBodega} u
                         </td>
                         <td style={{ color: '#60a5fa', fontWeight: 600 }}>
-                          {inv.stockReservado} u
+                          {resTienda} u
+                        </td>
+                        <td style={{ color: '#60a5fa', fontWeight: 600 }}>
+                          {resBodega} u
                         </td>
                       </tr>
-                    ))
-                  )}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
