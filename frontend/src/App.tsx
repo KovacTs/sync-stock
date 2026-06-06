@@ -84,6 +84,11 @@ export default function App() {
   const [editNombre, setEditNombre] = useState('');
   const [editPrecio, setEditPrecio] = useState('');
 
+  // Add Stock state
+  const [stockAddingSku, setStockAddingSku] = useState<string | null>(null);
+  const [addStockQty, setAddStockQty] = useState<string>('10');
+  const [addStockLocation, setAddStockLocation] = useState<string>('Tienda Valdivia');
+
   // Auto-connect fallback to mock data if API fails
   const [isUsingMocks, setIsUsingMocks] = useState(false);
 
@@ -663,6 +668,57 @@ export default function App() {
         showNotification('Producto actualizado (Simulado).', 'success');
       } else {
         showNotification(err.message || 'Error al actualizar producto', 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stockAddingSku || !addStockQty || !addStockLocation) return;
+    const qtyNum = Number(addStockQty);
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      showNotification('La cantidad debe ser un número mayor a 0.', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/sales/products/add-stock`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ sku: stockAddingSku, cantidad: qtyNum, ubicacion: addStockLocation })
+      });
+      const data = await res.json();
+      if (res.status === 200) {
+        showNotification('Stock agregado exitosamente.', 'success');
+        setStockAddingSku(null);
+        setAddStockQty('10');
+        fetchData();
+      } else {
+        throw new Error(data.mensaje || 'Error al agregar stock');
+      }
+    } catch (err: any) {
+      if (isUsingMocks) {
+        setProducts(products.map(p => {
+          if (p.sku === stockAddingSku) {
+            return {
+              ...p,
+              inventarios: p.inventarios.map(inv => {
+                if (inv.ubicacion.nombre === addStockLocation) {
+                  return { ...inv, stockDisponible: inv.stockDisponible + qtyNum };
+                }
+                return inv;
+              })
+            };
+          }
+          return p;
+        }));
+        setStockAddingSku(null);
+        setAddStockQty('10');
+        showNotification('Stock agregado (Simulado).', 'success');
+      } else {
+        showNotification(err.message || 'Error al agregar stock', 'error');
       }
     } finally {
       setLoading(false);
@@ -1441,6 +1497,47 @@ export default function App() {
             </div>
           )}
 
+          {/* Add Stock Section */}
+          {stockAddingSku && (
+            <div className="glass-panel" style={{ borderLeft: '4px solid var(--accent-emerald)' }}>
+              <h3>📥 Recibir Stock para Producto: {stockAddingSku}</h3>
+              <form onSubmit={handleAddStock} style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', marginTop: '16px' }}>
+                <div style={{ flex: 1, minWidth: '150px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Ubicación / Bodega</label>
+                  <select
+                    className="form-input"
+                    value={addStockLocation}
+                    onChange={(e) => setAddStockLocation(e.target.value)}
+                  >
+                    <option value="Tienda Valdivia">Tienda Valdivia</option>
+                    <option value="Bodega E-commerce">Bodega E-commerce</option>
+                  </select>
+                </div>
+
+                <div style={{ width: '150px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Cantidad a Añadir</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    className="form-input"
+                    value={addStockQty}
+                    onChange={(e) => setAddStockQty(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" className="btn-primary" style={{ height: '45px', background: 'var(--accent-emerald)', borderColor: 'var(--accent-emerald)' }} disabled={loading}>
+                    Agregar Stock
+                  </button>
+                  <button type="button" className="btn-primary" onClick={() => setStockAddingSku(null)} style={{ height: '45px', background: 'transparent', border: '1px solid var(--border-color)', boxShadow: 'none' }}>
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
           {/* Catalog list */}
           <div className="glass-panel">
             <h3>Catálogo de Artículos Registrados</h3>
@@ -1461,17 +1558,30 @@ export default function App() {
                       <td style={{ fontWeight: 600 }}>{prod.nombre}</td>
                       <td>${prod.precio.toLocaleString('es-CL')}</td>
                       <td>
-                        <button
-                          onClick={() => {
-                            setEditingSku(prod.sku);
-                            setEditNombre(prod.nombre);
-                            setEditPrecio(prod.precio.toString());
-                          }}
-                          className="btn-primary"
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--accent-blue)', background: 'transparent', color: 'var(--accent-blue)', boxShadow: 'none' }}
-                        >
-                          ✏️ Editar
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => {
+                              setEditingSku(prod.sku);
+                              setEditNombre(prod.nombre);
+                              setEditPrecio(prod.precio.toString());
+                              setStockAddingSku(null);
+                            }}
+                            className="btn-primary"
+                            style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--accent-blue)', background: 'transparent', color: 'var(--accent-blue)', boxShadow: 'none' }}
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            onClick={() => {
+                              setStockAddingSku(prod.sku);
+                              setEditingSku(null);
+                            }}
+                            className="btn-primary"
+                            style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--accent-emerald)', background: 'transparent', color: 'var(--accent-emerald)', boxShadow: 'none' }}
+                          >
+                            📥 Recibir Stock
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

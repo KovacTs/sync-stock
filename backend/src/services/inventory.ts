@@ -355,6 +355,55 @@ export async function updateProduct(sku: string, nombre: string, precio: number)
 }
 
 /**
+ * Adds stock to an existing product in a specific location.
+ */
+export async function addStock(sku: string, cantidad: number, ubicacionNombre: string, usuarioId?: string) {
+  return await prisma.$transaction(async (tx) => {
+    // 1. Fetch Product
+    const product = await tx.producto.findUnique({ where: { sku } });
+    if (!product) throw new Error('PRODUCT_NOT_FOUND');
+
+    // 2. Fetch Location
+    const location = await tx.ubicacion.findFirst({ where: { nombre: ubicacionNombre } });
+    if (!location) throw new Error('LOCATION_NOT_FOUND');
+
+    // 3. Acquire Pessimistic Lock on Inventario row
+    const inventoryResult: any[] = await tx.$queryRaw`
+      SELECT * FROM "Inventario"
+      WHERE "producto_id" = ${product.id}::uuid AND "ubicacion_id" = ${location.id}::uuid
+      FOR UPDATE
+    `;
+
+    if (inventoryResult.length === 0) {
+      throw new Error('INVENTORY_RECORD_NOT_FOUND');
+    }
+
+    const inventory = inventoryResult[0];
+
+    // 4. Update Inventario (increment disponible)
+    const updatedInv = await tx.inventario.update({
+      where: { id: inventory.id },
+      data: {
+        stockDisponible: inventory.stockDisponible + cantidad,
+      },
+    });
+
+    // 5. Write audit log
+    await tx.historialInv.create({
+      data: {
+        productoId: product.id,
+        ubicacionId: location.id,
+        cantidad,
+        tipoMovimiento: TipoMovimiento.Recepcion,
+        usuarioId: usuarioId || (await getSystemUserId(tx)),
+      },
+    });
+
+    return updatedInv;
+  });
+}
+
+/**
  * Dispatches an order, changing its status to Despachada.
  */
 export async function dispatchOrder(orderId: string) {

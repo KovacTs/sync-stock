@@ -1,6 +1,6 @@
 import { registerSOAService } from '../lib/soabus';
 import { prisma } from '../lib/prisma';
-import { posCheckout, commitReservation, reserveStock, createProduct, updateProduct, dispatchOrder } from './inventory';
+import { posCheckout, commitReservation, reserveStock, createProduct, updateProduct, dispatchOrder, addStock } from './inventory';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -106,6 +106,12 @@ export async function startESBMediator() {
       const { sku, nombre, precio } = payload;
       const product = await updateProduct(sku, nombre, Number(precio));
       return JSON.stringify(product);
+    }
+
+    if (action === 'add-stock') {
+      const { sku, cantidad, ubicacion, usuarioId } = payload;
+      const updatedInv = await addStock(sku, Number(cantidad), ubicacion, usuarioId);
+      return JSON.stringify(updatedInv);
     }
 
     if (action === 'dispatch-order') {

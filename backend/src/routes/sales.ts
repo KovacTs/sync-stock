@@ -157,6 +157,33 @@ salesRouter.put('/products/:sku', verificarToken, permitirRoles('Admin'), async 
   }
 });
 
+// 7b. Add Stock to Product
+salesRouter.post('/products/add-stock', verificarToken, permitirRoles('Admin'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sku, cantidad, ubicacion } = req.body;
+    if (!sku || !cantidad || !ubicacion) {
+      return res.status(400).json({
+        codigo: 'DATOS_REQUERIDOS',
+        mensaje: 'SKU, cantidad y ubicacion son requeridos.'
+      });
+    }
+
+    const { status, data } = await requestSOABus(
+      'sales',
+      JSON.stringify({ action: 'add-stock', sku, cantidad, ubicacion, usuarioId: req.user?.userId })
+    );
+
+    if (status === 'NK') {
+      return res.status(400).json({ codigo: 'ERROR_NEGOCIO', mensaje: data });
+    }
+
+    return res.status(200).json(JSON.parse(data));
+  } catch (error: any) {
+    console.error('Error adding stock via ESB:', error);
+    return res.status(500).json({ error: 'Error al agregar stock en el bus.' });
+  }
+});
+
 // 8. Dispatch Order (RF-004)
 salesRouter.post('/orders/:id/dispatch', verificarToken, permitirRoles('Admin', 'ECommerce'), async (req, res) => {
   try {
