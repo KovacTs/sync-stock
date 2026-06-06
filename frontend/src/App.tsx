@@ -134,25 +134,46 @@ export default function App() {
 
   const fetchData = async () => {
     try {
+      const currentRole = rol || localStorage.getItem('rol');
+
+      // 1. Catalog of products is accessible by all roles
       const pRes = await fetch(`${API_BASE_URL}/sales/products`);
       if (!pRes.ok) throw new Error();
       const productsData = await pRes.json();
       setProducts(productsData);
 
-      const oRes = await fetch(`${API_BASE_URL}/sales/orders`);
-      if (!oRes.ok) throw new Error();
-      const ordersData = await oRes.json();
-      setOrders(ordersData);
+      // 2. Fetch orders only for Admin
+      if (currentRole === 'Admin') {
+        const oRes = await fetch(`${API_BASE_URL}/sales/orders`, {
+          headers: getAuthHeaders()
+        });
+        if (oRes.ok) {
+          const ordersData = await oRes.json();
+          setOrders(ordersData);
+        }
+      }
 
-      const rRes = await fetch(`${API_BASE_URL}/sales/reservations`);
-      if (!rRes.ok) throw new Error();
-      const resData = await rRes.json();
-      setReservations(resData);
+      // 3. Fetch reservations for Admin or ECommerce
+      if (currentRole === 'Admin' || currentRole === 'ECommerce') {
+        const rRes = await fetch(`${API_BASE_URL}/sales/reservations`, {
+          headers: getAuthHeaders()
+        });
+        if (rRes.ok) {
+          const resData = await rRes.json();
+          setReservations(resData);
+        }
+      }
 
-      const hRes = await fetch(`${API_BASE_URL}/sales/history`);
-      if (!hRes.ok) throw new Error();
-      const histData = await hRes.json();
-      setHistory(histData);
+      // 4. Fetch history log only for Admin
+      if (currentRole === 'Admin') {
+        const hRes = await fetch(`${API_BASE_URL}/sales/history`, {
+          headers: getAuthHeaders()
+        });
+        if (hRes.ok) {
+          const histData = await hRes.json();
+          setHistory(histData);
+        }
+      }
 
       setIsUsingMocks(false);
     } catch (err) {

@@ -1,4 +1,37 @@
 import net from 'net';
+import zlib from 'zlib';
+
+/**
+ * Helper to compress JSON payloads using zlib and encode in base64.
+ */
+function compressPayload(payload: string): string {
+  if (payload.startsWith('{') || payload.startsWith('[')) {
+    try {
+      const compressed = zlib.deflateSync(payload).toString('base64');
+      return '_Z_' + compressed;
+    } catch (e) {
+      console.error('[SOABus] Compression error:', e);
+      return payload;
+    }
+  }
+  return payload;
+}
+
+/**
+ * Helper to decompress base64-encoded zlib compressed payloads.
+ */
+function decompressPayload(payload: string): string {
+  if (payload.startsWith('_Z_')) {
+    try {
+      const compressed = payload.substring(3);
+      return zlib.inflateSync(Buffer.from(compressed, 'base64')).toString('utf-8');
+    } catch (e) {
+      console.error('[SOABus] Decompression error:', e);
+      return payload;
+    }
+  }
+  return payload;
+}
 
 /**
  * Encapsulates message formatting for the ESB: nnnnnSSSSSDATOS
@@ -6,7 +39,8 @@ import net from 'net';
  */
 export function sendSOAMessage(socket: net.Socket, serviceName: string, payload: string) {
   const cleanService = serviceName.padEnd(5).substring(0, 5);
-  const content = cleanService + payload;
+  const processedPayload = compressPayload(payload);
+  const content = cleanService + processedPayload;
   const byteLen = Buffer.byteLength(content, 'utf-8');
   const lengthStr = byteLen.toString().padStart(5, '0');
   socket.write(lengthStr + content);
@@ -18,7 +52,8 @@ export function sendSOAMessage(socket: net.Socket, serviceName: string, payload:
  */
 export function sendSOAResponse(socket: net.Socket, serviceName: string, result: 'OK' | 'NK', payload: string) {
   const cleanService = serviceName.padEnd(5).substring(0, 5);
-  const content = cleanService + result + payload;
+  const processedPayload = compressPayload(payload);
+  const content = cleanService + result + processedPayload;
   const byteLen = Buffer.byteLength(content, 'utf-8');
   const lengthStr = byteLen.toString().padStart(5, '0');
   socket.write(lengthStr + content);
@@ -61,9 +96,28 @@ export function requestSOABus(serviceName: string, payload: string): Promise<{ s
           socket.destroy();
 
           const content = contentBuf.toString('utf-8');
-          console.log(`[SOABus Client Debug] Raw content: "${content}"`);
           const service = content.substring(0, 5);
           let rest = content.substring(5);
+
+          let actionName = 'unknown';
+          let isQuery = false;
+          try {
+            const parsed = JSON.parse(payload);
+            actionName = parsed.action || 'unknown';
+            const silentActions = ['products', 'orders', 'reservations', 'history', 'stock'];
+            if (silentActions.includes(actionName)) {
+              isQuery = true;
+            }
+          } catch (e) {
+            if (serviceName === 'autho') {
+              actionName = 'login';
+            }
+          }
+
+          if (!isQuery) {
+            console.log(`[SOABus Transaction] Service: "${serviceName}", Action: "${actionName}" -> Initiated`);
+            console.log(`[SOABus Client Debug] Raw content: "${content.substring(0, 200)}${content.length > 200 ? '...' : ''}"`);
+          }
 
           let status: 'OK' | 'NK' = 'OK';
 
@@ -85,9 +139,14 @@ export function requestSOABus(serviceName: string, payload: string): Promise<{ s
           }
 
           const responseData = rest;
-          console.log(`[SOABus Client Debug] Parsed -> Service: "${service}", Status: "${status}", Data: "${responseData}"`);
+          const decompressedData = decompressPayload(responseData);
 
-          resolve({ status, data: responseData });
+          if (!isQuery) {
+            console.log(`[SOABus Client Debug] Parsed -> Service: "${service}", Status: "${status}", Data: "${decompressedData.substring(0, 200)}${decompressedData.length > 200 ? '...' : ''}"`);
+            console.log(`[SOABus Transaction] Service: "${serviceName}", Action: "${actionName}" -> Status: ${status}`);
+          }
+
+          resolve({ status, data: decompressedData });
         }
       }
     });
@@ -143,7 +202,7 @@ export function registerSOAService(serviceName: string, onRequestHandler: (paylo
 
         const content = contentBuf.toString('utf-8');
         const service = content.substring(0, 5);
-        const payload = content.substring(5);
+        const payload = decompressPayload(content.substring(5));
 
         if (service === 'sinit') {
           console.log(`[SOABus Service ${cleanService}] Registered successfully. ESB Confirmation: ${payload}`);

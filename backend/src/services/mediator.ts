@@ -164,7 +164,8 @@ export async function startESBMediator() {
           fechaCreacion: true,
           total: true
         },
-        orderBy: { fechaCreacion: 'desc' }
+        orderBy: { fechaCreacion: 'desc' },
+        take: 15
       });
       return JSON.stringify(orders);
     }
@@ -183,7 +184,8 @@ export async function startESBMediator() {
             select: { nombre: true }
           }
         },
-        orderBy: { fechaCreacion: 'desc' }
+        orderBy: { fechaCreacion: 'desc' },
+        take: 10
       });
       return JSON.stringify(reservations);
     }
@@ -205,7 +207,8 @@ export async function startESBMediator() {
             select: { username: true, rol: true }
           }
         },
-        orderBy: { fechaHora: 'desc' }
+        orderBy: { fechaHora: 'desc' },
+        take: 10
       });
       return JSON.stringify(history);
     }
