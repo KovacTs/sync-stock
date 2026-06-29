@@ -12,6 +12,7 @@
 % Configuración de encabezado y pie de página
 \pagestyle{fancy}
 \fancyhf{}
+\setlength{\headheight}{15pt}
 \lhead{Sistema Sync-Stock: Informe Final - 3ra Entrega}
 \rhead{Junio 2026}
 \rfoot{\thepage}
@@ -247,32 +248,36 @@ A continuación se detalla el esquema de base de datos extendido que soporta la 
 \end{tabularx}
 \caption{Diccionario de datos: Historial de inventario para log de auditoría.}
 \end{table}
+\clearpage
 
 \section{Arquitectura SOA y Mediación a través de un Bus de Servicios (ESB)}
-Para resolver la integración y sincronización en tiempo real de múltiples canales, el sistema se ha estructurado bajo el patrón \textbf{SOA (Service-Oriented Architecture)} incorporando un \textbf{Enterprise Service Bus (ESB)} central como columna vertebral de comunicación. El ESB no solo actúa como canal de mensajería (utilizando un broker de mensajería como RabbitMQ), sino que implementa componentes de mediación clásicos que desacoplan físicamente y lógicamente a los clientes y servicios.
+Para resolver la integración y sincronización en tiempo real de múltiples canales, el sistema se ha estructurado bajo el patrón \textbf{SOA (Service-Oriented Architecture)} incorporando un \textbf{Enterprise Service Bus (ESB)} central como columna vertebral de comunicación. El ESB centraliza las interacciones y proporciona mecanismos de mediación clásicos que desacoplan físicamente y lógicamente a los clientes y servicios, operando de manera exclusiva en la capa de transporte mediante conexiones TCP persistentes.
 
-\subsection{El Rol del Enterprise Service Bus (ESB)}
-En lugar de depender de llamadas HTTP directas y acopladas punto a punto entre la aplicación web e-commerce, el POS físico y los servicios de backend, el ESB centraliza las interacciones y proporciona las siguientes capacidades de infraestructura:
+\subsection{El Rol del Enterprise Service Bus (ESB) y Límite Arquitectónico}
+A fin de asegurar el cumplimiento de los estándares de una arquitectura SOA tradicional y evitar el uso de protocolos acoplados a la web dentro del bus de servicios, se ha establecido un límite arquitectónico estricto. **No existe presencia de HTTP ni de APIs REST dentro del núcleo de la arquitectura SOA.** La comunicación entre el ESB y los microservicios proveedores, así como con los consumidores nativos, se realiza de forma exclusiva mediante sockets TCP utilizando un protocolo de mensajería con entramado de longitud fija (\textit{Length-Prefixed Framing}).
+
+El ESB proporciona las siguientes capacidades de infraestructura:
 \begin{itemize}
-    \item \textbf{Garantía de Entrega y Asincronía:} Permite que las órdenes del canal digital ingresen a colas de mensajería seguras. Si el servicio de inventario o el sistema externo del courier de despachos sufren una caída temporal, las solicitudes permanecen encoladas garantizando que ningún pedido se pierda.
-    \item \textbf{Desacoplamiento de Protocolos:} El bus permite conectar componentes heterogéneos, permitiendo que clientes web interactúen de manera sincrónica (REST/JSON) mientras que la comunicación interna y con sistemas legados se realice asíncronamente (AMQP/gRPC).
+    \item \textbf{Garantía de Entrega y Asincronía:} Permite encolar las peticiones en canales de mensajería TCP dedicados. Si un servicio (como el de inventario o despacho) experimenta una indisponibilidad temporal, los mensajes TCP quedan retenidos en el bus en un buffer de conexión hasta que el servicio correspondiente restablezca su socket y procese el mensaje, garantizando que no se pierdan transacciones de negocio.
+    \item \textbf{Desacoplamiento Tecnológico y de Protocolos:} Al independizar la capa de servicios del protocolo HTTP, la arquitectura SOA puede integrar de forma nativa microservicios construidos en diversos lenguajes y plataformas (como scripts Python de automatización o servicios de backend en Node.js) que se comunican directamente a través de flujos TCP estructurados (JSON/TCP), eliminando la sobrecarga y la dependencia de servidores web tradicionales.
+    \item \textbf{Gateway/Adaptador de Clientes Web Externos (Perímetro):} Debido a las restricciones de seguridad de los navegadores web modernos, las aplicaciones frontend en ejecución en el cliente (como React) no pueden abrir sockets TCP crudos directamente. Para solventar esto, se posiciona un **API Gateway / Adaptador de Clientes (Express.js)** en la frontera exterior del sistema. Este adaptador actúa como un cliente externo a la red SOA: recibe las llamadas HTTP REST del navegador web, las valida y autoriza (RBAC mediante tokens JWT) y las traduce a mensajes en formato JSON/TCP que inyecta en el ESB. De esta forma, el protocolo HTTP queda estrictamente relegado al perímetro de red externa, fuera del núcleo de servicios SOA.
 \end{itemize}
 
 \subsection{Mecanismos Clásicos de Mediación SOA Implementados}
-El ESB actúa como una capa de mediación activa, aplicando patrones de integración empresarial (EIP) para procesar los mensajes en tránsito:
+El ESB actúa como una capa de mediación activa sobre los flujos TCP de datos, aplicando patrones de integración empresarial (EIP) clásicos para procesar los mensajes en tránsito:
 
 \begin{enumerate}
-    \item \textbf{Enrutamiento Basado en Contenido (Content-Based Router):} Cuando el ESB recibe un mensaje de orden, inspecciona el campo \texttt{canal} del payload. 
+    \item \textbf{Enrutamiento Basado en Contenido (Content-Based Router):} Cuando el ESB recibe una trama TCP de orden o consulta, inspecciona el campo \texttt{action} o \texttt{canal} del payload. 
     \begin{itemize}
-        \item Si proviene de \texttt{E\_Commerce}, enruta el mensaje hacia la cola de validación de reservas y pasarela de pago.
-        \item Si proviene de \texttt{POS\_Fisico}, el mensaje es enrutado directamente al canal de facturación local e impresión de boleta física.
+        \item Si el mensaje proviene de un canal digital como \texttt{E\_Commerce}, el ESB enruta dinámicamente el mensaje hacia el servicio de inventario para la validación de reservas y flujo de pago.
+        \item Si el mensaje proviene de un canal físico como el punto de venta \texttt{POS\_Fisico}, es enrutado directamente al servicio de inventario para una rebaja directa sin estado intermedio de reserva.
     \end{itemize}
     
-    \item \textbf{Transformación y Traducción de Datos (Data Transformer):} Los canales de venta externos (como Shopify o un POS heredado) envían estructuras de datos propietarias. La capa de mediación del ESB traduce estos formatos a un esquema de datos estándar del sistema (denominado \textit{Modelo Canónico}) antes de que ingresen a los servicios core de inventario.
+    \item \textbf{Transformación y Traducción de Datos (Data Transformer):} Para homogeneizar los formatos de las peticiones que ingresan al bus (como payloads provenientes de terminales POS antiguas o plataformas e-commerce con campos abreviados), el mediador aplica un transformador que normaliza los campos de entrada al esquema estandarizado del bus (\textit{Modelo Canónico}) antes de que el mensaje llegue al servicio de inventario.
     
-    \item \textbf{Enriquecimiento de Mensajes (Message Enricher):} Cuando una orden es capturada por el bus con información básica (ej. SKU y cantidad), el mediador consulta dinámicamente al servicio de catálogo para inyectar datos adicionales (descripción, peso para el courier, precio unitario vigente) antes de despachar el payload completo al servicio de persistencia y despacho.
+    \item \textbf{Enriquecimiento de Mensajes (Message Enricher):} Cuando un cliente envía una trama TCP simplificada (con el SKU y cantidad únicamente), el bus intercepta el mensaje y consulta internamente al catálogo para enriquecer el payload agregando el nombre del producto, descripción y precio unitario vigente. Esto asegura que los servicios core reciban mensajes completos y contextualizados para su procesamiento.
     
-    \item \textbf{Puente de Protocolos (Protocol Bridge):} El ESB traduce las peticiones HTTP REST síncronas provenientes del frontend POS en mensajes AMQP dirigidos al backend, y viceversa, permitiendo que el sistema se comunique eficientemente sin acoplar tecnológicamente sus extremos.
+    \item \textbf{Puente de Protocolos (Protocol Bridge) de Frontera:} A nivel perimetral, la pasarela de servicios traduce las peticiones HTTP REST síncronas del frontend web en tramas estructuradas TCP enviadas al bus. Este componente de frontera permite la interoperabilidad de la interfaz de usuario con la arquitectura SOA interna, traduciendo formatos, cabeceras y parámetros HTTP a sockets de red TCP y viceversa.
 \end{enumerate}
 
 \subsection{Componentes de la Arquitectura}
@@ -280,42 +285,42 @@ Bajo este esquema de mediación, los componentes del ecosistema SOA se dividen e
 
 \subsubsection{Componentes Cliente (Consumidores de Servicios)}
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Cliente Web POS (Punto de Venta):} Interfaz local en la tienda física para vendedores. Consume servicios a través del ESB de forma síncrona para consultas de stock rápidas y de forma asíncrona para el cierre de caja.
-    \item \textbf{Panel de Administración (Dashboard):} Aplicación web para el encargado de e-commerce y administradores. Permite monitorear el flujo de colas en el ESB, verificar alertas de stock y gestionar reservas en tiempo real.
+    \item \textbf{Clientes Directos TCP (POS de Escritorio / Scripts de Automatización):} Clientes de escritorio y procesos automatizados que se conectan directamente al ESB en el puerto 5000 utilizando sockets TCP crudos, consumiendo servicios de manera nativa sin intermediarios HTTP.
+    \item \textbf{API Gateway de Frontera (Adaptador REST-TCP):} Servidor web Express que actúa como puente de frontera. Traduce las llamadas HTTP REST del navegador web (Frontend POS, Dashboard de Administración) a mensajes de red TCP compatibles con el bus SOA.
 \end{itemize}
 
 \subsubsection{Componentes de Servicio (Proveedores del Bus)}
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Auth Service:} Servicio transversal expuesto en el bus para verificar credenciales y gestionar roles de acceso (RBAC).
-    \item \textbf{Inventory Service:} Servicio core que gestiona el inventario omnicanal físico y web, respondiendo a los comandos de reserva y confirmación enviados por el ESB.
-    \item \textbf{Sales \& Order Service:} Orquesta el ciclo de venta, consumiendo el Inventory Service mediante el ESB. Si una venta web falla en la pasarela de pago, este servicio coordina la compensación (cancelación de reserva).
+    \item \textbf{Auth Service (Servicio 'autho'):} Servicio de autenticación registrado en el bus TCP. Procesa credenciales de usuario y genera firmas criptográficas JWT.
+    \item \textbf{Inventory Service (Servicio 'inven'):} Servicio core de inventario. Resuelve consultas y realiza reservas o confirmaciones de stock interactuando de forma atómica con la base de datos PostgreSQL.
+    \item \textbf{Sales \& Order Service (Servicio 'sales'):} Gestiona el flujo de órdenes, coordinando con el servicio de inventario a través de mensajes TCP y auditando las transacciones de negocio.
 \end{itemize}
 
-\section{Interfaces de los Componentes y Contratos Técnicos}
-Para garantizar la interoperabilidad del sistema Sync-Stock en un entorno omnicanal crítico en tiempo real, se definen contratos técnicos rigurosos. A continuación, se resume la relación entre interfaces, Requerimientos Funcionales (RF) y Requerimientos No Funcionales (RNF):
+\section{Interfaces de los Componentes y Contratos de Mensajería TCP}
+Para garantizar la interoperabilidad del sistema Sync-Stock en un entorno omnicanal crítico en tiempo real, se definen contratos de mensajería TCP rigurosos a nivel del bus de servicios (ESB). Cada contrato especifica el identificador del servicio destino, el tipo de acción a ejecutar, la estructura de la carga útil del mensaje (request) y la estructura de la respuesta (response). A continuación, se resume la relación entre mensajes, Requerimientos Funcionales (RF) y Requerimientos No Funcionales (RNF):
 
 \begin{table}[h!]
 \centering
 \footnotesize
-\begin{tabularx}{\textwidth}{@{}lXll@{}}
-\toprule
-\textbf{Servicio} & \textbf{Endpoint / Operación} & \textbf{RF Satisfecho} & \textbf{RNF Mapeado} \\ \midrule
-Auth Service & \texttt{POST /api/v1/auth/login} & RF-007, RF-008 & Seguridad, Expiración (30 min) \\ \addlinespace
-Inventory Service & \texttt{POST /api/v1/inventory/reserve} & RF-002 & Consistencia Estricta, Alta Concurrencia \\ \addlinespace
-Inventory Service & \texttt{POST /api/v1/inventory/commit} & RF-004, RF-006 & Integridad Transaccional, Auditoría \\ \addlinespace
-Inventory Service & \texttt{GET /api/v1/inventory/stock/\{sku\}} & RF-001, RF-003 & Baja Latencia ($<200$ ms) \\ \bottomrule
+\begin{tabularx}{\textwidth}{|l|l|l|X|X|}
+\hline
+\textbf{Servicio Destino} & \textbf{Acción (Campo \texttt{action})} & \textbf{RF Satisfecho} & \textbf{RNF Mapeado} & \textbf{Protocolo y Puerto} \\ \hline
+\texttt{autho} & \textit{Login (Implícito)} & RF-007, RF-008 & Seguridad (RBAC), JWT & TCP Socket, Puerto 5000 \\ \hline
+\texttt{inven} & \texttt{reserve} & RF-002 & Consistencia Estricta, Bloqueo Pesimista & TCP Socket, Puerto 5000 \\ \hline
+\texttt{inven} & \texttt{commit} & RF-004, RF-006 & Integridad Transaccional, Auditoría & TCP Socket, Puerto 5000 \\ \hline
+\texttt{inven} & \texttt{stock} & RF-001, RF-003 & Baja Latencia ($<200$ ms) & TCP Socket, Puerto 5000 \\ \hline
 \end{tabularx}
-\caption{Resumen de endpoints de servicios, RFs y RNFs.}
+\caption{Resumen de contratos de mensajería TCP de la arquitectura SOA.}
 \end{table}
 
-\subsection{Detalle de Contratos Técnicos de la API}
-A continuación se especifican las estructuras de las peticiones, las respuestas de éxito y el control de errores detallado (en formato JSON) para cada interfaz.
+\subsection{Detalle de Contratos de Mensajería TCP}
+A continuación se especifican las estructuras de las tramas de petición y de respuesta enviadas a través del ESB en formato JSON mediante sockets TCP crudos. Cabe destacar que todas las respuestas de los servicios inician con un prefijo de estado de dos caracteres (\texttt{OK} o \texttt{NK}) para indicar el éxito o fracaso a nivel del bus de servicios, seguido de la carga útil correspondiente.
 
-\subsubsection{1. Autenticación de Usuarios (Auth Service)}
-\textbf{Endpoint:} \texttt{POST /api/v1/auth/login} \\
-\textbf{Descripción:} Valida las credenciales del operario y devuelve un token firmado (JWT) con su rol asociado (RBAC).
+\subsubsection{1. Servicio de Autenticación (Servicio \texttt{autho})}
+\textbf{Identificador en el Bus:} \texttt{autho} \\
+\textbf{Descripción:} Valida las credenciales del operario y devuelve un token firmado (JWT) con su rol asociado para habilitar el control de acceso en los clientes de frontera.
 
-\paragraph{Estructura de la Petición (Request):}
+\paragraph{Estructura del Mensaje de Petición (Request TCP Payload):}
 \begin{verbatim}
 {
   "username": "fllancao",
@@ -323,236 +328,224 @@ A continuación se especifican las estructuras de las peticiones, las respuestas
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Éxito (200 OK):}
+\paragraph{Mensaje de Respuesta Exitoso (TCP Response Payload - Prefijo \texttt{OK}):}
+La respuesta es enviada por el socket con el código de estado \texttt{OK} prependido en la trama:
 \begin{verbatim}
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhMWIy...[truncado]",
-  "usuario": {
-    "id": "e4b2d288-43ea-46b2-a5e2-88229988ff22",
-    "nombre": "Fernando Llancao",
-    "rol": "Administrador"
-  },
-  "expiraEnSegundos": 1800
+OK{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5...[truncado]",
+  "rol": "Administrador",
+  "username": "fllancao"
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Error (401 Unauthorized):}
+\paragraph{Mensaje de Respuesta de Error (TCP Response Payload - Prefijo \texttt{NK}):}
+En caso de fallo en las credenciales, el bus retorna la señal de error \texttt{NK} y la causa del rechazo:
 \begin{verbatim}
-{
-  "codigoError": "CREDENCIALES_INVALIDAS",
-  "mensaje": "El usuario o la contraseña ingresados son incorrectos.",
-  "timestamp": "2026-06-03T01:10:00Z"
-}
+NKCREDENTIALS_INVALID
 \end{verbatim}
 
 \newpage
-\subsubsection{2. Reserva Temporal de Stock (Inventory Service)}
-\textbf{Endpoint:} \texttt{POST /api/v1/inventory/reserve} \\
-\textbf{Descripción:} Reserva temporalmente unidades de un producto en una ubicación específica para evitar la sobreventa desde el canal web.
+\subsubsection{2. Reserva Temporal de Stock (Servicio \texttt{inven}, Acción \texttt{reserve})}
+\textbf{Identificador en el Bus:} \texttt{inven} \\
+\textbf{Acción:} \texttt{reserve} \\
+\textbf{Descripción:} Adquiere un bloqueo pesimista en base de datos y reserva temporalmente unidades de un producto en una ubicación específica para evitar la sobreventa.
 
-\paragraph{Estructura de la Petición (Request):}
+\paragraph{Estructura del Mensaje de Petición (Request TCP Payload):}
 \begin{verbatim}
 {
-  "ordenId": "d3b07384-d113-49c5-a5d6-d68aee460183",
-  "items": [
-    {
-      "sku": "PES-CANA-CARBON-01",
-      "cantidad": 2,
-      "ubicacionId": "e2a22288-e22a-43c2-bf72-888e422201b1"
-    }
-  ]
+  "action": "reserve",
+  "sku": "PES-CA1",
+  "cantidad": 2,
+  "ubicacion": "Tienda Valdivia",
+  "usuarioId": "e4b2d288-43ea-46b2-a5e2-88229988ff22"
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Éxito (201 Created):}
+\paragraph{Mensaje de Respuesta Exitoso (TCP Response Payload - Prefijo \texttt{OK}):}
 \begin{verbatim}
-{
-  "reservaId": "b1b88220-432a-4632-a5e2-88229988ff22",
+OK{
+  "reservaId": 12,
   "estado": "Pendiente",
-  "fechaCreacion": "2026-06-03T01:10:00Z",
-  "fechaExpiracion": "2026-06-03T01:25:00Z"
+  "expiraEn": "2026-06-03T01:25:00.000Z"
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Error - Stock Insuficiente (409 Conflict):}
+\paragraph{Mensaje de Respuesta de Error (TCP Response Payload - Prefijo \texttt{NK}):}
 \begin{verbatim}
-{
-  "codigoError": "STOCK_INSUFICIENTE",
-  "mensaje": "No hay suficiente stock para el producto indicado en esa bodega.",
-  "timestamp": "2026-06-03T01:10:01Z",
-  "detalles": {
-    "sku": "PES-CANA-CARBON-01",
-    "stockDisponible": 1,
-    "cantidadSolicitada": 2
-  }
-}
+NKSTOCK_INSUFICIENTE
 \end{verbatim}
 
-\subsubsection{3. Confirmación de Reserva (Inventory Service)}
-\textbf{Endpoint:} \texttt{POST /api/v1/inventory/commit} \\
-\textbf{Descripción:} Transforma una reserva temporal en una venta confirmada y descontada definitivamente.
+\subsubsection{3. Confirmación de Reserva (Servicio \texttt{inven}, Acción \texttt{commit})}
+\textbf{Identificador en el Bus:} \texttt{inven} \\
+\textbf{Acción:} \texttt{commit} \\
+\textbf{Descripción:} Transforma una reserva temporal en una venta confirmada definitiva, rebajando definitivamente el stock reservado del catálogo.
 
-\paragraph{Estructura de la Petición (Request):}
+\paragraph{Estructura del Mensaje de Petición (Request TCP Payload):}
 \begin{verbatim}
 {
+  "action": "commit",
   "reservaId": "b1b88220-432a-4632-a5e2-88229988ff22",
-  "ordenId": "d3b07384-d113-49c5-a5d6-d68aee460183"
+  "usuarioId": "e4b2d288-43ea-46b2-a5e2-88229988ff22"
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Éxito (200 OK):}
+\paragraph{Mensaje de Respuesta Exitoso (TCP Response Payload - Prefijo \texttt{OK}):}
 \begin{verbatim}
-{
-  "status": "success",
-  "mensaje": "Reserva confirmada e inventario rebajado definitivamente.",
-  "transaccionId": "c8e228c2-482a-466d-88b1-2299aaffd883"
+OK{
+  "id": "c8e228c2-482a-466d-88b1-2299aaffd883",
+  "total": 119980.00,
+  "estado": "Pagada"
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Error - Reserva Expirada o Inexistente (410 Gone):}
+\paragraph{Mensaje de Respuesta de Error (TCP Response Payload - Prefijo \texttt{NK}):}
 \begin{verbatim}
-{
-  "codigoError": "RESERVA_NO_VALIDA",
-  "mensaje": "La reserva no existe, ya fue consolidada o expiró tras el límite de 15 minutos.",
-  "timestamp": "2026-06-03T01:10:05Z",
-  "detalles": {
-    "reservaId": "b1b88220-432a-4632-a5e2-88229988ff22",
-    "estadoActual": "Expirada"
-  }
-}
+NKRESERVATION_NOT_FOUND
 \end{verbatim}
 
-\subsubsection{4. Consulta de Stock en Tiempo Real (Inventory Service)}
-\textbf{Endpoint:} \texttt{GET /api/v1/inventory/stock/\{sku\}} \\
+\subsubsection{4. Consulta de Stock en Tiempo Real (Servicio \texttt{inven}, Acción \texttt{stock})}
+\textbf{Identificador en el Bus:} \texttt{inven} \\
+\textbf{Acción:} \texttt{stock} \\
 \textbf{Descripción:} Devuelve la disponibilidad detallada de un SKU en todas las ubicaciones físicas y bodegas registradas.
 
-\paragraph{Respuesta de Éxito (200 OK):}
+\paragraph{Estructura del Mensaje de Petición (Request TCP Payload):}
 \begin{verbatim}
 {
-  "sku": "PES-CANA-CARBON-01",
-  "nombre": "Caña de Pescar Carbono Pro",
-  "precio": 45000.00,
+  "action": "stock",
+  "sku": "PES-CA1"
+}
+\end{verbatim}
+
+\paragraph{Mensaje de Respuesta Exitoso (TCP Response Payload - Prefijo \texttt{OK}):}
+\begin{verbatim}
+OK{
+  "sku": "PES-CA1",
+  "nombre": "Caña de Pescar Shakespeare Ugly Stik",
+  "precio": 59990.00,
   "inventario": [
     {
-      "ubicacionId": "e2a22288-e22a-43c2-bf72-888e422201b1",
-      "ubicacionNombre": "Tienda Santiago POS",
-      "stockDisponible": 15,
-      "stockReservado": 2,
-      "stockTransito": 0
+      "bodega": "Tienda Valdivia",
+      "tipo": "Tienda",
+      "disponible": 10,
+      "reservado": 0,
+      "enTransito": 0
     },
     {
-      "ubicacionId": "a5d3f288-43ea-46b2-a5e2-88229988abcd",
-      "ubicacionNombre": "Bodega Principal E-commerce",
-      "stockDisponible": 50,
-      "stockReservado": 8,
-      "stockTransito": 10
+      "bodega": "Bodega E-commerce",
+      "tipo": "Bodega",
+      "disponible": 30,
+      "reservado": 0,
+      "enTransito": 0
     }
   ]
 }
 \end{verbatim}
 
 
-\section{Documentación de Servicios y Procesos Cliente}
+\section{Documentación de Servicios y Procesos de Mensajería TCP}
 
-Para soportar las nuevas funcionalidades e integraciones de la 3ra Entrega, se ha extendido el contrato técnico del sistema Sync-Stock. Las peticiones externas son recibidas por el router de Express (actuando como un Protocol Bridge), el cual decodifica y valida las credenciales y el token JWT, evalúa el control de acceso por rol (RBAC) con el middleware \texttt{permitirRoles}, empaqueta el contenido y lo retransmite al Enterprise Service Bus (ESB) por sockets TCP en formato JSON.
+Para soportar las nuevas funcionalidades e integraciones de la 3ra Entrega, se ha extendido el catálogo de contratos de mensajería TCP del sistema Sync-Stock. Las peticiones externas son recibidas por el API Gateway perimetral de Express (actuando como un Protocol Bridge externo), el cual decodifica y valida las credenciales y el token JWT, evalúa el control de acceso por rol (RBAC) con el middleware \texttt{verificarToken} y \texttt{permitirRoles}, empaqueta el contenido y lo retransmite al Enterprise Service Bus (ESB) por sockets TCP en formato JSON.
 
-A continuación se detallan las operaciones adicionales incorporadas al catálogo de servicios:
+A continuación se detallan las operaciones adicionales incorporadas al catálogo de servicios del bus TCP:
 
 \subsection{Registro de Nuevos Productos}
-\textbf{Endpoint:} \texttt{POST /api/v1/sales/products} \\
-\textbf{Rol Autorizado:} \texttt{Admin} \\
+\textbf{Servicio Destino:} \texttt{sales} \\
+\textbf{Acción (Campo \texttt{action}):} \texttt{create-product} \\
 \textbf{Descripción:} Registra un nuevo producto en el catálogo y de forma automática crea un registro de inventario con stock inicial en todas las ubicaciones y bodegas disponibles bajo una única transacción ACID.
 
-\paragraph{Estructura de la Petición (Request):}
+\paragraph{Estructura del Mensaje de Petición (Request TCP Payload):}
 \begin{verbatim}
 {
+  "action": "create-product",
   "sku": "PES-SE-NZ-023",
   "nombre": "Señuelo Rapala Magnum",
   "precio": 12500,
-  "stockInicial": 20
+  "initialStock": 20
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Éxito (201 Created):}
+\paragraph{Mensaje de Respuesta Exitoso (TCP Response Payload - Prefijo \texttt{OK}):}
 \begin{verbatim}
-{
-  "status": "success",
-  "mensaje": "Producto registrado y stock inicial sembrado.",
-  "producto": {
-    "id": "f5b88220-432a-4632-a5e2-88229988ffaa",
-    "sku": "PES-SE-NZ-023",
-    "nombre": "Señuelo Rapala Magnum",
-    "precio": 12500
-  }
+OK{
+  "id": "f5b88220-432a-4632-a5e2-88229988ffaa",
+  "sku": "PES-SE-NZ-023",
+  "nombre": "Señuelo Rapala Magnum",
+  "precio": 12500
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Error - SKU Duplicado (400 Bad Request):}
+\paragraph{Mensaje de Respuesta de Error (TCP Response Payload - Prefijo \texttt{NK}):}
 \begin{verbatim}
-{
-  "codigoError": "SKU_DUPLICADO",
-  "mensaje": "El SKU proporcionado ya está registrado en el sistema.",
-  "timestamp": "2026-06-03T19:30:00Z"
-}
+NKPRODUCT_ALREADY_EXISTS
 \end{verbatim}
 
 \subsection{Modificación de Producto}
-\textbf{Endpoint:} \texttt{PUT /api/v1/sales/products/:sku} \\
-\textbf{Rol Autorizado:} \texttt{Admin} \\
+\textbf{Servicio Destino:} \texttt{sales} \\
+\textbf{Acción (Campo \texttt{action}):} \texttt{update-product} \\
 \textbf{Descripción:} Actualiza los atributos básicos (nombre y precio) de un producto existente identificado por su SKU en el catálogo.
 
-\paragraph{Estructura de la Petición (Request):}
+\paragraph{Estructura del Mensaje de Petición (Request TCP Payload):}
 \begin{verbatim}
 {
+  "action": "update-product",
+  "sku": "PES-SE-NZ-023",
   "nombre": "Señuelo Rapala Magnum Pro",
   "precio": 13990
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Éxito (200 OK):}
+\paragraph{Mensaje de Respuesta Exitoso (TCP Response Payload - Prefijo \texttt{OK}):}
 \begin{verbatim}
-{
-  "status": "success",
-  "mensaje": "Producto actualizado exitosamente.",
-  "producto": {
-    "sku": "PES-SE-NZ-023",
-    "nombre": "Señuelo Rapala Magnum Pro",
-    "precio": 13990
-  }
+OK{
+  "sku": "PES-SE-NZ-023",
+  "nombre": "Señuelo Rapala Magnum Pro",
+  "precio": 13990
 }
+\end{verbatim}
+
+\paragraph{Mensaje de Respuesta de Error (TCP Response Payload - Prefijo \texttt{NK}):}
+\begin{verbatim}
+NKPRODUCT_NOT_FOUND
 \end{verbatim}
 
 \subsection{Despacho de Órdenes Consolidadas}
-\textbf{Endpoint:} \texttt{POST /api/v1/sales/orders/:id/dispatch} \\
-\textbf{Rol Autorizado:} \texttt{Admin}, \texttt{ECommerce} \\
+\textbf{Servicio Destino:} \texttt{sales} \\
+\textbf{Acción (Campo \texttt{action}):} \texttt{dispatch-order} \\
 \textbf{Descripción:} Marca una orden pagada y reservada temporalmente como despachada físicamente, actualizando su estado interno y liberando la reserva del flujo activo.
 
-\paragraph{Respuesta de Éxito (200 OK):}
+\paragraph{Estructura del Mensaje de Petición (Request TCP Payload):}
 \begin{verbatim}
 {
-  "status": "success",
-  "mensaje": "Orden d3b07384 despachada exitosamente."
+  "action": "dispatch-order",
+  "orderId": "d3b07384-d113-49c5-a5d6-d68aee460183"
 }
 \end{verbatim}
 
-\paragraph{Respuesta de Error - Estado Inválido (400 Bad Request):}
+\paragraph{Mensaje de Respuesta Exitoso (TCP Response Payload - Prefijo \texttt{OK}):}
 \begin{verbatim}
-{
-  "codigoError": "ESTADO_DESPACHO_INVALIDO",
-  "mensaje": "Solo se pueden despachar órdenes que estén en estado Pagada.",
-  "timestamp": "2026-06-03T19:35:00Z"
+OK{
+  "id": "d3b07384-d113-49c5-a5d6-d68aee460183",
+  "canal": "E_Commerce",
+  "estado": "Despachada",
+  "fechaCreacion": "2026-06-03T19:30:00.000Z",
+  "total": 12500
 }
 \end{verbatim}
 
-\subsection{Redirección General a través del Bus de Servicios (GET)}
-Para dar cumplimiento estricto con el diseño arquitectónico SOA definido para PescaTotal, se refactorizaron las rutas del módulo de ventas en el router REST del backend. Peticiones de solo lectura como:
+\paragraph{Mensaje de Respuesta de Error (TCP Response Payload - Prefijo \texttt{NK}):}
+\begin{verbatim}
+NKORDER_NOT_FOUND
+\end{verbatim}
+
+\subsection{Redirección General a través del Bus de Servicios (Acciones de Lectura)}
+Para dar cumplimiento estricto con el diseño arquitectónico SOA definido para PescaTotal, se definieron contratos TCP específicos para la consulta de información de solo lectura en el servicio \texttt{sales}. Cuando el API Gateway perimetral recibe las peticiones HTTP GET correspondientes, realiza la delegación enviando tramas TCP con las siguientes acciones al bus de servicios:
 \begin{itemize}
-    \item \texttt{GET /sales/products} (Catálogo completo de productos)
-    \item \texttt{GET /sales/orders} (Historial consolidado de órdenes)
-    \item \texttt{GET /sales/reservations} (Listado de reservas web activas)
-    \item \texttt{GET /sales/history} (Log de auditoría de movimientos)
+    \item \textbf{Consulta de Catálogo (\texttt{action: 'products'}):} Recupera la lista completa de productos junto con el stock disponible y reservado por ubicación.
+    \item \textbf{Historial de Órdenes (\texttt{action: 'orders'}):} Recupera las últimas 15 órdenes de venta registradas en el sistema.
+    \item \textbf{Listado de Reservas (\texttt{action: 'reservations'}):} Recupera el estado de las últimas 10 reservas de stock realizadas por el e-commerce.
+    \item \textbf{Auditoría de Movimientos (\texttt{action: 'history'}):} Recupera los últimos 10 eventos de inventario registrados para control de auditoría.
 \end{itemize}
-Ya no realizan llamadas directas de lectura a Prisma en el servidor web Express. En su lugar, emiten una llamada TCP estructurada a través de \texttt{requestSOABus} al microservicio correspondiente. El bus de servicios ESB se encarga de resolver la consulta y retornar la respuesta, manteniendo el desacoplamiento físico de la capa de datos.
+De esta forma, el servidor Express actúa únicamente como un puente de red y traductor perimetral, mientras que el procesamiento y acceso a datos se centraliza en el bus de servicios TCP, manteniendo el desacoplamiento físico y de persistencia de la capa de negocio.
 
 \newpage
 \section{Documentación del Sistema y Evidencias de Funcionamiento}
@@ -566,7 +559,7 @@ El sistema Sync-Stock se implementó utilizando Node.js, TypeScript y Prisma, lo
     Implementado en \texttt{soabus.ts}, este módulo levanta un socket TCP en el puerto 5000. Los microservicios de inventario (\texttt{inven}), ventas (\texttt{sales}) y autenticación (\texttt{autho}) se registran abriendo sockets persistentes. La mensajería interna utiliza un protocolo de entramado customizado de longitud fija (Length-Prefixed Framing). Cada mensaje enviado posee un prefijo de 5 caracteres numéricos que especifican el tamaño exacto del contenido en bytes, seguido de 5 caracteres que identifican al servicio de destino. Esto previene problemas clásicos de fragmentación de buffer en streams TCP socket concurrentes.
     
     \item \textbf{Control de Concurrencia y Bloqueos Pesimistas:}
-    Para garantizar que no ocurran sobreventas en checkout simultáneos de POS físico y reservas de E-commerce, el servicio de inventario (\texttt{inventory.ts}) utiliza transacciones pesimistas (\texttt{prisma.\$transaction}). Dentro de la transacción, se ejecuta una consulta raw SQL utilizando \texttt{SELECT * FROM "Inventario" ... FOR UPDATE}. Esto bloquea temporalmente las filas de stock específicas de los productos requeridos, forzando a que cualquier transacción concurrente deba esperar a que la transacción actual confirme (\textit{commit}) o aborte (\textit{rollback}).
+    Para garantizar que no ocurran sobreventas en checkout simultáneos (POS físico y web), el servicio de inventario (\texttt{inventory.ts}) utiliza transacciones pesimistas (\texttt{prisma.\$transaction}). Dentro de la transacción, se ejecuta una consulta raw SQL con \texttt{SELECT * FROM "Inventario" ... FOR UPDATE}. Esto bloquea temporalmente las filas de stock específicas de los productos requeridos, forzando a que cualquier transacción concurrente deba esperar a que la transacción actual confirme o aborte.
     
     \item \textbf{Prevención de Deadlocks:}
     Para evitar el problema de bloqueo mutuo (\textit{deadlocks}) donde dos transacciones concurrentes retienen recursos cruzados, se incorporó un algoritmo de ordenamiento determinista en la función de checkout. Antes de adquirir los bloqueos en base de datos, el backend ordena el array de productos por su UUID de forma ascendente. Al bloquear los recursos siempre en el mismo orden físico en el disco, se imposibilita la formación de ciclos de espera.
@@ -602,7 +595,7 @@ A continuación se adjuntan las trazas de ejecución en consola obtenidas direct
   - SKU: PES-SE-NZ-023 (UUID: f5b88220-...)
 [Prisma-SQL] SELECT * FROM "Inventario" WHERE ... FOR UPDATE
 [Prisma-SQL] Row locks acquired successfully. No contention.
-[Inventory-Service] Stock verified. Deducting 2 units from available stock.
+[Inventory-Service] Stock verified. Deducting 2 units.
 [Prisma-SQL] UPDATE "Inventario" SET "stockDisponible" = 13 WHERE ...
 [Sales-Service] Order d3b07384-d113... recorded successfully.
 [Inventory-Service] Transaction committed. Locks released.
